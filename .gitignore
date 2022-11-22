@@ -1,5 +1,7 @@
-src/data/secrets.toml
+secrets.toml
 
 venv/
 
+*.log
 *.pyc
+*.sqlite

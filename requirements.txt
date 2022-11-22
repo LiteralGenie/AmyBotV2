@@ -1,2 +1,7 @@
+aiohttp
+bs4
+discord.py
+loguru
 fastapi
 uvicorn
+yarl
