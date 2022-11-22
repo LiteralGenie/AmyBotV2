@@ -4,6 +4,7 @@ from config import paths
 
 
 DB = sqlite3.connect(paths.DATA_DIR / "db.sqlite")
+DB.row_factory = sqlite3.Row
 
 
 def create_tables():
@@ -15,8 +16,8 @@ def create_tables():
 
                 title                       TEXT    NOT NULL,
                 end_time                    REAL    NOT NULL,
-                last_scan_time              REAL,
-                last_complete_scan_time     REAL,
+                is_complete                 REAL    NOT NULL,
+                last_fetch_time             REAL,
 
                 PRIMARY KEY (id)
             ) STRICT;
@@ -32,13 +33,13 @@ def create_tables():
                 name                TEXT        NOT NULL,
                 eid                 INTEGER     NOT NULL,
                 key                 TEXT        NOT NULL,
+                is_isekai           INTEGER     NOT NULL,
                 level               INTEGER,
                 stats               TEXT        NOT NULL,       --json
 
-                current_bid         INTEGER,
-                current_bid_link    TEXT,
+                price               INTEGER,
+                bid_link            TEXT,
                 buyer               TEXT,
-                next_bid            INTEGER,
                 seller              TEXT        NOT NULL,
 
                 PRIMARY KEY (id, id_auction),
@@ -49,19 +50,17 @@ def create_tables():
 
         DB.execute(
             """
-            CREATE TABLE IF NOT EXISTS super_items (
+            CREATE TABLE IF NOT EXISTS super_mats (
                 id                  TEXT,
                 id_auction          TEXT,
 
                 name                TEXT        NOT NULL,
                 quantity            INTEGER     NOT NULL,
-                price               INTEGER     NOT NULL,
-                unit_price          INTEGER     NOT NULL,
+                unit_price          REAL,
 
-                current_bid         INTEGER,
-                current_bid_link    TEXT,
+                price               INTEGER,
+                bid_link            TEXT,
                 buyer               TEXT,
-                next_bid            INTEGER,
                 seller              TEXT        NOT NULL,
 
                 PRIMARY KEY (id, id_auction),
@@ -76,7 +75,8 @@ def create_tables():
                 id              TEXT,
                 id_auction      TEXT,
                                 
-                info            TEXT,
+                summary         TEXT,
+                html            TEXT,
 
                 PRIMARY KEY (id, id_auction),
                 FOREIGN KEY (id_auction) REFERENCES super_auctions (id)

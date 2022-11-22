@@ -1,7 +1,7 @@
 CALL_LOG = dict()
 
 
-def limit(calls: int, period: float = 1, scope=""):
+def rate_limit(calls: int, period: float = 1, scope=""):
     """
     Decorator for rate limiting function calls
     """

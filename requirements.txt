@@ -1,7 +1,8 @@
 aiohttp
 bs4
 discord.py
-loguru
 fastapi
+html.parser
+loguru
 uvicorn
 yarl

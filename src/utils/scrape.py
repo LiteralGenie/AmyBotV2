@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
 from aiohttp import ClientSession
+from bs4 import BeautifulSoup
 from yarl import URL
 
 from loguru import logger
@@ -9,14 +10,14 @@ from loguru import logger
 async def fetch_page(
     url: str | URL,
     session: ClientSession | None = None,
-    content_type: Literal["text", "json"] = "text",
+    content_type: Literal["soup", "text", "json"] = "soup",
 ) -> Any:
     """Perform a GET
 
     Args:
         url:
         session: For accumulating cookies
-        content_type: Whether to return a str ('text') or a dict / list ('json')
+        content_type: Whether to return a BeautifulSoup instance, str, or list / dict
 
     Raises:
         Exception:
@@ -31,6 +32,9 @@ async def fetch_page(
             raise Exception
 
         match content_type:
+            case "soup":
+                result = await resp.text(encoding="utf-8")
+                result = BeautifulSoup(result, "html.parser")
             case "text":
                 result = await resp.text(encoding="utf-8")
             case "json":

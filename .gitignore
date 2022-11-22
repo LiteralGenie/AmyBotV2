@@ -1,5 +1,6 @@
 secrets.toml
 
+cache/
 venv/
 
 *.log
