@@ -17,6 +17,7 @@ def init_logger():
             rotation="10 MB",
             compression="gz",
             filter=lambda record: "server" in record["extra"].get("tags", []),
+            level="TRACE",
         )
 
     def default_filter(record: "loguru.Record") -> bool:
