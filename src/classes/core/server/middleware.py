@@ -14,7 +14,7 @@ from starlette.types import ASGIApp
 from . import logger
 
 
-class LogWare(BaseHTTPMiddleware):
+class RequestLog(BaseHTTPMiddleware):
     """Log request and response"""
 
     def __init__(self, app: ASGIApp, dispatch: Optional[DispatchFunction] = None):
@@ -36,7 +36,28 @@ class LogWare(BaseHTTPMiddleware):
         return resp
 
 
-class PerformanceWare(BaseHTTPMiddleware):
+class ErrorLog(BaseHTTPMiddleware):
+    """Log Errors"""
+
+    def __init__(self, app: ASGIApp, dispatch: Optional[DispatchFunction] = None):
+        super().__init__(app, dispatch)
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[StreamingResponse]],
+    ):
+        try:
+            resp = await call_next(request)
+            return resp
+        except:
+            logger.exception("")
+            raise
+
+
+class PerformanceLog(BaseHTTPMiddleware):
+    """Measure response time"""
+
     def __init__(self, app: ASGIApp, dispatch: Optional[DispatchFunction] = None):
         super().__init__(app, dispatch)
 

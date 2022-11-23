@@ -5,21 +5,24 @@ from typing import Optional
 
 import uvicorn
 from classes.core.server import logger
-from classes.core.server.middleware import LogWare, PerformanceWare
+from classes.core.server.middleware import ErrorLog, RequestLog, PerformanceLog
 from classes.db import init_db
 from fastapi import Depends, FastAPI, HTTPException
 from utils.sql import WhereBuilder
 
 server = FastAPI()
-server.add_middleware(PerformanceWare)
-server.add_middleware(LogWare)
+
+# Order matters, topmost are called first
+server.add_middleware(ErrorLog)
+server.add_middleware(PerformanceLog)
+server.add_middleware(RequestLog)
 
 
 @server.get("/super/search_equips")
 def get_search_equips(
     name: Optional[str] = None,
-    min_year: Optional[int] = None,
-    max_year: Optional[int] = None,
+    min_date: Optional[float] = None,
+    max_date: Optional[float] = None,
     min_price: Optional[int] = None,
     max_price: Optional[int] = None,
     seller: Optional[str] = None,
@@ -37,18 +40,16 @@ def get_search_equips(
         for fragment in fragments:
             where_builder.add("name LIKE ?", f"%{fragment}%")
 
-    # Create year filters
-    #   eg "min_year=2019" should match items sold >=2019
-    if min_year is not None and max_year is not None and max_year < min_year:
+    # Create date filters (utc)
+    #   eg "min_date=1546300800" should match items sold on / after Jan 1, 2019
+    if min_date is not None and max_date is not None and max_date < min_date:
         raise HTTPException(
-            400, detail=f"min_year > max_year ({min_year} > {max_year})"
+            400, detail=f"min_date > max_date ({min_date} > {max_date})"
         )
-    if min_year is not None:
-        ts = datetime(min_year, 1, 1, tzinfo=timezone.utc).timestamp()
-        where_builder.add("sa.end_time >= ?", ts)
-    if max_year is not None:
-        ts = datetime(max_year, 1, 1, tzinfo=timezone.utc).timestamp()
-        where_builder.add("sa.end_time <= ?", ts)
+    if min_date is not None:
+        where_builder.add("sa.end_time >= ?", min_date)
+    if max_date is not None:
+        where_builder.add("sa.end_time <= ?", max_date)
 
     # Create price filters
     #   eg "max_price=1000" should match items sold for <=1000c
