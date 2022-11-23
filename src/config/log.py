@@ -6,10 +6,17 @@ from config import paths
 def init_logger():
     def main():
         logger.add(
-            paths.LOG_DIR / "amy.log",
+            paths.LOG_DIR / "main.log",
             rotation="10 MB",
             compression="gz",
             filter=default_filter,
+        )
+
+        logger.add(
+            paths.LOG_DIR / "server.log",
+            rotation="10 MB",
+            compression="gz",
+            filter=lambda record: "server" in record["extra"].get("tags", []),
         )
 
     def default_filter(record: "loguru.Record") -> bool:
