@@ -44,7 +44,7 @@ class SuperScraper:
             ).fetchall()
 
         for r in rows:
-            await cls.fetch_auction(r["id"], allow_cached=bool(r["is_complete"]))
+            await cls.fetch_auction(r["id"], allow_cached=r["is_complete"] == 0)
 
     @classmethod
     @super_limit
