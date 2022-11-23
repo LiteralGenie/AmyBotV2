@@ -16,7 +16,7 @@ def create_tables():
 
                 title                       TEXT    NOT NULL,
                 end_time                    REAL    NOT NULL,
-                is_complete                 REAL    NOT NULL,
+                is_complete                 REAL,
                 last_fetch_time             REAL,
 
                 PRIMARY KEY (id)

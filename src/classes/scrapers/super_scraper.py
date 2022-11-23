@@ -1,20 +1,27 @@
 import json
 import re
-from datetime import datetime
 import time
+from dataclasses import dataclass
+from datetime import datetime
 
 import bs4
-from bs4 import BeautifulSoup, ResultSet, Tag
-from loguru import logger
+from bs4 import BeautifulSoup, Tag
 from classes.db import DB, create_tables
 from config import paths
+from loguru import logger
 from utils.json_cache import JsonCache
 from utils.parse import parse_equip_link, price_to_int
+from utils.rate_limit import rate_limit
 from utils.scrape import fetch_page
 from yarl import URL
-from utils.rate_limit import rate_limit
 
 super_limit = rate_limit(calls=1, period=5, scope="super")
+
+
+@dataclass
+class Cell:
+    text: str
+    href: str | None
 
 
 class SuperScraper:
@@ -29,13 +36,15 @@ class SuperScraper:
         with DB:
             rows = DB.execute(
                 """
-                SELECT id FROM super_auctions
+                SELECT id, is_complete FROM super_auctions
                 WHERE last_fetch_time is NULL
+                OR is_complete = 0
+                OR is_complete is NULL
                 """
             ).fetchall()
 
         for r in rows:
-            await cls.fetch_auction(r["id"])
+            await cls.fetch_auction(r["id"], allow_cached=bool(r["is_complete"]))
 
     @classmethod
     @super_limit
@@ -52,7 +61,7 @@ class SuperScraper:
             soup = BeautifulSoup(page, "html.parser")
 
             row_els = soup.select("tbody > tr")
-            row_data = []
+            row_data: list[dict] = []
             for el in row_els:
                 data = parse_row(el)
                 insert_db_row(data)
@@ -60,15 +69,20 @@ class SuperScraper:
 
             return row_data
 
-        def parse_row(row: bs4.Tag) -> dict:
-            [idxEl, dateEl, _, _, _, threadEl] = row.select("td")
+        def parse_row(tr: bs4.Tag) -> dict:
+            # Check pre-conditions
+            cells = [cls._el_to_dict(td) for td in tr.select("td")]
+            [idxCell, dateCell, _, _, _, threadCell] = cells
+            assert threadCell.href
 
-            title = idxEl.text
+            # Parse
+            title = idxCell.text
             end_time = datetime.strptime(
-                dateEl.text + "+0000", r"%m-%d-%Y%z"
+                dateCell.text + "+0000", r"%m-%d-%Y%z"
             ).timestamp()
-            id = re.search(r"showtopic=(\d+)", str(threadEl.select_one("a")["href"])).group(1)  # type: ignore
+            id = re.search(r"showtopic=(\d+)", threadCell.href).group(1)  # type: ignore
 
+            # Return
             data = dict(id=id, title=title, end_time=end_time)
             return data
 
@@ -77,15 +91,24 @@ class SuperScraper:
                 DB.execute(
                     """
                     INSERT OR IGNORE INTO super_auctions
-                    (id, title, end_time, is_complete, last_fetch_time) VALUES (:id, :title, :end_time, 0, 0)
-                """,
+                    (id, title, end_time, is_complete, last_fetch_time) VALUES (:id, :title, :end_time, NULL, 0)
+                    """,
                     data,
                 )
 
         return await main()
 
     @classmethod
-    async def fetch_auction(cls, auction_id: str) -> list[dict]:
+    async def fetch_auction(cls, auction_id: str, allow_cached=True) -> list[dict]:
+        """Fetch itemlist for auction
+
+        Args:
+            auction_id:
+
+        Raises:
+            Exception:
+        """
+
         PATTS = {
             "price_buyer": re.compile(
                 # 1803k (sickentide #66.5)
@@ -102,16 +125,34 @@ class SuperScraper:
         }
 
         async def main():
-            page = await fetch(auction_id)
-            rows = [r.select("td") for r in page.select("tbody > tr")]
+            page = await fetch(auction_id, allow_cached=allow_cached)
+            trs = page.select("tbody > tr")
+            rows: list[list[Cell]] = []
+            for tr in trs:
+                cells = [cls._el_to_dict(td) for td in tr.select("td")]
+                assert len(cells) == 6
+                rows.append(cells)
 
             # Parse auction data
             item_data = []
-            for row in rows:
-                data = parse_quirky_row(auction_id, row) or parse_row(row)
-
-                data["id_auction"] = auction_id
-                item_data.append(data)
+            for cells in rows:
+                try:
+                    data = parse_quirky_row(auction_id, cells) or parse_row(cells)
+                    data["id_auction"] = auction_id
+                    item_data.append(data)
+                except:
+                    logger.exception(f"Failed to parse {cells}")
+                    with DB:
+                        item_code = cells[0].text
+                        item_name = cells[1].text
+                        tr = trs[rows.index(cells)]
+                        DB.execute(
+                            """
+                            INSERT OR REPLACE INTO super_fails
+                            (id, id_auction, summary, html) VALUES (?, ?, ?, ?)
+                            """,
+                            (item_code, auction_id, item_name, str(tr)),
+                        )
 
             # Update db
             with DB:
@@ -137,10 +178,10 @@ class SuperScraper:
 
             return item_data
 
-        async def fetch(id: str, live=False) -> BeautifulSoup:
+        async def fetch(id: str, allow_cached=False) -> BeautifulSoup:
             path = f"itemlist{id}"
 
-            if live or path not in cls.html_cache:
+            if not allow_cached or path not in cls.html_cache:
                 # Fetch but rate-limited
                 @super_limit
                 async def _fetch() -> BeautifulSoup:
@@ -170,37 +211,39 @@ class SuperScraper:
 
             return page
 
-        def parse_quirky_row(auction_id: str, rowEls: ResultSet[Tag]) -> dict | None:
-            [codeEl, nameEl, infoEl, currentBidEl, nextBidEl, sellerEl] = rowEls
+        def parse_quirky_row(auction_id: str, cells: list[Cell]) -> dict | None:
+            [codeCell, nameCell, infoCell, *_] = cells
 
-            if auction_id == "194262" and codeEl.text == "Mat00":
+            if auction_id == "194262" and codeCell.text == "Mat00":
                 # Pony figurine set -> 1 Pony figurine set
-                nameEl.string = "1 " + nameEl.text
-                return parse_mat_row(rowEls)
-            if infoEl.text.startswith("seller: "):
-                logger.info(f'Discarding info for [{nameEl.text}] - "{infoEl.text}"')
-                infoEl.string = ""
-                return parse_row(rowEls)
+                nameCell.text = "1 " + nameCell.text
+                return parse_mat_row(cells)
+            if infoCell.text.startswith("seller: "):
+                logger.info(
+                    f'Discarding info "{infoCell.text}" for "{nameCell.text}" in auction {auction_id}'
+                )
+                infoCell.text = ""
+                return parse_row(cells)
 
             return None
 
-        def parse_row(rowEls: ResultSet[Tag]) -> dict:
-            [codeEl, *_] = rowEls
-            if codeEl.text.startswith("Mat"):
-                return parse_mat_row(rowEls)
+        def parse_row(cells: list[Cell]) -> dict:
+            [codeCell, *_] = cells
+            if codeCell.text.startswith("Mat"):
+                return parse_mat_row(cells)
             else:
-                return parse_equip_row(rowEls)
+                return parse_equip_row(cells)
 
-        def parse_mat_row(rowEls: ResultSet[Tag]) -> dict:
-            [codeEl, nameEl, infoEl, currentBidEl, nextBidEl, sellerEl] = rowEls
+        def parse_mat_row(rowEls: list[Cell]) -> dict:
+            [codeCell, nameCell, _, currentBidCell, _, sellerCell] = rowEls
 
-            id = codeEl.text
-            seller = sellerEl.text
+            id = codeCell.text
+            seller = sellerCell.text
 
-            [quantity, name] = PATTS["quant_name"].search(nameEl.text).groups()  # type: ignore
+            [quantity, name] = PATTS["quant_name"].search(nameCell.text).groups()  # type: ignore
             quantity = int(quantity)
 
-            [buyer, bid_link, price] = parse_price_buyer(currentBidEl)
+            [buyer, bid_link, price] = parse_price_buyer(currentBidCell)
             unit_price = price / quantity if price else None
 
             data = dict(
@@ -216,23 +259,24 @@ class SuperScraper:
             )
             return data
 
-        def parse_equip_row(rowEls: ResultSet[Tag]) -> dict:
-            [codeEl, nameEl, infoEl, currentBidEl, nextBidEl, sellerEl] = rowEls
+        def parse_equip_row(cells: list[Cell]) -> dict:
+            [codeCell, nameCell, infoCell, currentBidCell, _, sellerCell] = cells
 
-            id = codeEl.text
-            name = nameEl.text
-            [eid, key, is_isekai] = parse_equip_link(nameEl.select_one("a")["href"])  # type: ignore
-            [buyer, bid_link, price] = parse_price_buyer(currentBidEl)
-            seller = sellerEl.text
+            id = codeCell.text
+            name = nameCell.text
+            seller = sellerCell.text
+            [eid, key, is_isekai] = parse_equip_link(nameCell.href)  # type: ignore
+            [buyer, bid_link, price] = parse_price_buyer(currentBidCell)
 
-            if infoEl.text == "":
+            if infoCell.text == "":
                 # Super didn't provide any info
                 level = None
                 stats = "{}"
             else:
-                info_text = re.search(PATTS["level_stats"], infoEl.text).group(1)  # type: ignore
+                # Verify we're parsing smth like "500, ADB 94%, EDB 55%, ..."
+                assert re.search(PATTS["level_stats"], infoCell.text)
 
-                [level_text, *stat_list] = info_text.split(",")
+                [level_text, *stat_list] = infoCell.text.split(",")
                 if level_text == "Unassigned":
                     level = 0
                 elif level_text == "n/a":
@@ -267,29 +311,34 @@ class SuperScraper:
             return data
 
         def parse_price_buyer(
-            currentBidEl: Tag,
+            cell: Cell,
         ) -> tuple[str, str | None, int] | tuple[None, None, None]:
-            m = PATTS["price_buyer"].search(currentBidEl.text)
+            m = PATTS["price_buyer"].search(cell.text)
             if m:
                 # Item was sold
                 [price, buyer] = m.groups()
                 price = price_to_int(price)
-                link_el = currentBidEl.select_one("a")
-                bid_link = str(link_el["href"]) if link_el else None
-                return (buyer, bid_link, price)
+                return (buyer, cell.href, price)
             else:
                 # Item was unsold
-                if currentBidEl.text != "0":
+                if cell.text != "0":
                     raise Exception
                 return (None, None, None)
 
         return await main()
 
+    @staticmethod
+    def _el_to_dict(el: Tag) -> Cell:
+        a = el.select_one("a")
+        result = Cell(text=el.text, href=str(a["href"]) if a else None)
+        return result
+
 
 if __name__ == "__main__":
     # fmt: off
-    from config import init_logging
     import asyncio
+
+    from config import init_logging
 
     async def main():
         await SuperScraper.refresh_list()
