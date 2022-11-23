@@ -4,5 +4,6 @@ discord.py
 fastapi
 html.parser
 loguru
+toml
 uvicorn
 yarl

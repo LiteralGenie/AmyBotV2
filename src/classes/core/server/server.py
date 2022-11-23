@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from sqlite3 import Connection
 from typing import Optional
 
-import uvicorn
 from classes.core.server import logger
 from classes.core.server.middleware import ErrorLog, RequestLog, PerformanceLog
 from classes.db import init_db
@@ -116,6 +115,8 @@ def get_search_equips(
 
 
 if __name__ == "__main__":
+    import uvicorn
+
     uvicorn.run(
         "classes.core.server.server:server", host="0.0.0.0", port=4545, reload=True
     )

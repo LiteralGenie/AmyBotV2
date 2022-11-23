@@ -3,15 +3,13 @@ from typing import Awaitable, Callable, Optional
 
 from fastapi import Request
 from starlette.concurrency import iterate_in_threadpool
-from starlette.middleware.base import (
-    BaseHTTPMiddleware,
-    DispatchFunction,
-    RequestResponseEndpoint,
-)
+from starlette.middleware.base import BaseHTTPMiddleware, DispatchFunction
 from starlette.responses import StreamingResponse
 from starlette.types import ASGIApp
 
 from . import logger
+
+_CallNext = Callable[[Request], Awaitable[StreamingResponse]]
 
 
 class RequestLog(BaseHTTPMiddleware):
@@ -20,11 +18,7 @@ class RequestLog(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, dispatch: Optional[DispatchFunction] = None):
         super().__init__(app, dispatch)
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[StreamingResponse]],
-    ):
+    async def dispatch(self, request: Request, call_next: _CallNext):
         logger.debug(f"{request.method} {request.url}")
         resp = await call_next(request)
 
@@ -42,11 +36,7 @@ class ErrorLog(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, dispatch: Optional[DispatchFunction] = None):
         super().__init__(app, dispatch)
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[StreamingResponse]],
-    ):
+    async def dispatch(self, request: Request, call_next: _CallNext):
         try:
             resp = await call_next(request)
             return resp
@@ -61,11 +51,7 @@ class PerformanceLog(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, dispatch: Optional[DispatchFunction] = None):
         super().__init__(app, dispatch)
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[StreamingResponse]],
-    ):
+    async def dispatch(self, request: Request, call_next: _CallNext):
         start = time.time()
         resp = await call_next(request)
         end = time.time()

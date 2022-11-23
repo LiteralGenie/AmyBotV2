@@ -20,6 +20,14 @@ def init_logger():
             level="TRACE",
         )
 
+        logger.add(
+            paths.LOG_DIR / "discord_bot.log",
+            rotation="10 MB",
+            compression="gz",
+            filter=lambda record: "discord_bot" in record["extra"].get("tags", []),
+            level="DEBUG",
+        )
+
     def default_filter(record: "loguru.Record") -> bool:
         tags: list = record["extra"].get("tags", [])
         return "default" in tags or len(tags) == 0
