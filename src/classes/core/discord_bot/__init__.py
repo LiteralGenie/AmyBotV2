@@ -1,1 +1,1 @@
-from .bot import bot
+from .discord_bot import bot, DiscordBot

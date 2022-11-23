@@ -1,6 +1,7 @@
 import discord
 import toml
 from classes.core.discord_bot.equip_cog import EquipCog
+from classes.core.discord_bot.meta_cog import MetaCog
 from config import paths
 from discord.ext import commands
 
@@ -13,11 +14,15 @@ class DiscordBot(commands.Bot):
     secrets: dict
     config: dict
 
+    def run(self):
+        assert self.secrets
+        super().run(self.secrets["DISCORD_KEY"])
+
     def __init__(self, *args, **kwargs):
         intents = discord.Intents.default()
         intents.message_content = True
 
-        super().__init__(*args, intents=intents, **kwargs)
+        super().__init__("fake_prefix", *args, intents=intents, **kwargs)
 
         self.reload_secrets()
         self.reload_config()
@@ -25,6 +30,7 @@ class DiscordBot(commands.Bot):
     async def on_ready(self):
         logger.info(f"Logged in as {bot.user}")
         await self.add_cog(EquipCog(self))
+        await self.add_cog(MetaCog(self))  # should be last cog added
 
     def reload_secrets(self):
         self.secrets = toml.load(paths.CONFIG_DIR / "secrets.toml")
@@ -33,12 +39,10 @@ class DiscordBot(commands.Bot):
         self.config = toml.load(paths.CONFIG_DIR / "discord_bot.toml")
         self.command_prefix = self.config["prefix"]
 
-    def run(self):
-        assert self.secrets
-        super().run(self.secrets["DISCORD_KEY"])
+    ###
 
 
-bot = DiscordBot(command_prefix="?")
+bot = DiscordBot()
 
 
 if __name__ == "__main__":
