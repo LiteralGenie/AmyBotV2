@@ -4,7 +4,7 @@ from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 from yarl import URL
 
-from loguru import logger
+from config import logger
 
 
 async def fetch_page(

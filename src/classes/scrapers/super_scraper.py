@@ -8,7 +8,7 @@ import bs4
 from bs4 import BeautifulSoup, Tag
 from classes.db import DB, create_tables
 from config import paths
-from loguru import logger
+from config import logger
 from utils.json_cache import JsonCache
 from utils.parse import parse_equip_link, price_to_int
 from utils.rate_limit import rate_limit
@@ -337,9 +337,6 @@ class SuperScraper:
 if __name__ == "__main__":
     # fmt: off
     import asyncio
-
-    from config import init_logging
-
     async def main():
         await SuperScraper.refresh_list()
         await SuperScraper.fetch_updates()
