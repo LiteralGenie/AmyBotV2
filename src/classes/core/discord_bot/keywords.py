@@ -94,7 +94,7 @@ class LinkKey(Keyword):
     def extract(cls, text: str) -> tuple[str, str | None]:
         """Check if "link" is in text"""
 
-        PATT = re.compile(r"\blink\b")
+        PATT = re.compile(r"\b(link)\b")
         m = re.search(PATT, text)
         if m:
             rem = text[: m.start(1)] + text[m.end(1) :]

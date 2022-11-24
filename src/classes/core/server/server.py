@@ -59,7 +59,10 @@ def get_search_equips(
     if min_price is not None:
         where_builder.add("se.price >= ?", min_price)
     if max_price is not None:
-        where_builder.add("se.price <= ?", max_price)
+        wb = WhereBuilder("OR")
+        wb.add("se.price <= ?", max_price)
+        wb.add("se.price IS NULL", None)
+        where_builder.add_builder(wb)
 
     # Create buyer filters
     if buyer is not None:

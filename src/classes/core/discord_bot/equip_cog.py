@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
-from functools import partial
 import re
-from typing import Any, Callable, Optional, Type
+from typing import Any, Callable, Optional
 
 from classes.core.discord_bot.keywords import (
     BuyerKey,
-    Keyword,
     LinkKey,
     MaxPriceKey,
     MinPriceKey,
@@ -21,7 +19,8 @@ from discord.ext import commands
 from utils.discord import alias_by_prefix, extract_quoted, paginate
 from utils.http import fetch_page
 from utils.misc import compose_1arg_fns
-from utils.parse import int_to_price
+from utils.parse import create_equip_link, int_to_price
+from classes.core.discord_bot import types as types
 
 from classes.core import discord_bot
 
@@ -58,30 +57,35 @@ class EquipCog(commands.Cog):
         # If input is None, return None. Else apply each function in fns, from left to right
         noop = lambda *fns: lambda x: compose_1arg_fns(*fns)(x) if x is not None else x
 
-        data = dict()
-        data["name"] = noop(str)(equip_name)
-        data["min_date"] = noop(str, YearKey.convert)(year)
-        data["link"] = bool(show_link)
-        data["min_price"] = noop(MinPriceKey.convert)(min)
-        data["max_price"] = noop(MinPriceKey.convert)(max)
-        data["seller"] = noop(lambda name: name if name else True)(seller)
-        data["buyer"] = noop(lambda name: name if name else True)(buyer)
+        params = types._Equip.FetchParams()
 
-        if seller is None and show_seller:
-            data["seller"] = True
-        if buyer is None and show_buyer:
-            data["buyer"] = True
+        params["name"] = equip_name or ""
+        params["min_date"] = noop(str, YearKey.convert)(year)
+        params["min_price"] = noop(MinPriceKey.convert)(min)
+        params["max_price"] = noop(MinPriceKey.convert)(max)
+        params["seller"] = seller
+        params["buyer"] = buyer
 
-        resp = await self._equip(data)
+        opts = types._Equip.FormatOptions()
+        opts["show_link"] = bool(show_link)
+        if show_seller or seller:
+            opts["show_seller"] = True
+        if show_buyer or buyer:
+            opts["show_buyer"] = True
+
+        resp = await self._equip(params, opts)
 
     @commands.command(name="equip", aliases=alias_by_prefix("equip", starting_at=2))
     async def text_equip(self, ctx: Context, *, msg: str):
         async def main():
-            data = parse(msg)
-            for pg in await self._equip(data):
+            params, opts = parse(msg)
+
+            for pg in await self._equip(params, opts):
                 await ctx.send(pg)
 
-        def parse(text: str) -> dict:
+        def parse(
+            text: str,
+        ) -> tuple[types._Equip.FetchParams, types._Equip.FormatOptions]:
             # Pair dict key with prefix / extractor / converter
             parsers: list[
                 tuple[
@@ -155,38 +159,73 @@ class EquipCog(commands.Cog):
                     rem += " " + q_val
             data["name"] = rem
 
+            # Split into params and options
+            params = data.copy()
+            opts = types._Equip.FormatOptions()
+
+            if params.get("link"):
+                opts["show_link"] = True
+                del params["link"]
+            if params.get("seller") is True:
+                opts["show_seller"] = True
+                del params["seller"]
+            if params.get("buyer") is True:
+                opts["show_buyer"] = True
+                del params["buyer"]
+
             # Return
-            return data
+            return params, opts  # type: ignore
 
         await main()
 
-    async def _equip(self, params: dict) -> list[str]:
+    async def _equip(
+        self, params: types._Equip.FetchParams, opts: types._Equip.FormatOptions
+    ) -> list[str]:
         async def main():
-            # Massage params
-            show_link = bool(params.get("link"))
-            show_buyer = bool(params.get("buyer"))
-            show_seller = bool(params.get("seller"))
-            if params.get("buyer") is True:
-                del params["buyer"]
-            if params.get("seller") is True:
-                del params["seller"]
-
             # Fetch
-            data = await fetch(params)
-
-            # Get printout
-            msg = fmt(
-                "Test",
-                data,
-                show_link=show_link,
-                show_buyer=show_buyer,
-                show_seller=show_seller,
+            items = sorted(
+                await fetch(params), key=lambda d: d["price"] or 0, reverse=True
             )
-            msg = f"```py\n{msg}```"
+            groups = group_by_name(items)
+            tables = {
+                name: create_table(
+                    lst,
+                    show_buyer=opts.get("show_buyer", False),
+                    show_seller=opts.get("show_seller", False),
+                )
+                for name, lst in groups.items()
+            }
+
+            # Create printout
+            msg = ""
+            if opts.get("show_link"):
+
+                def fmt_row(row_text: str, row_type: str, idx: int | None):
+                    if row_type == "BODY":
+                        item = items[idx]  # type: ignore
+                        url = create_equip_link(
+                            item["eid"], item["key"], item["is_isekai"]
+                        )
+                        result = f"`{row_text} | `{url}"
+                    else:
+                        result = f"`{row_text} | `"
+                    return result
+
+                table_texts = {
+                    name: tbl.print(cb=fmt_row) for name, tbl in tables.items()
+                }
+                pieces = [f"**{name}**\n{text}" for name, text in table_texts.items()]
+                msg = "\n\n".join(pieces)
+            else:
+                pieces = [f"@ {name}\n{tbl.print()}" for name, tbl in tables.items()]
+                msg = "\n\n".join(pieces)
+                msg = f"```py\n{msg}```"
+
+            # Paginate
             pages = paginate(msg)
             return pages
 
-        async def fetch(params: dict) -> list[Api.SuperEquip]:
+        async def fetch(params: types._Equip.FetchParams) -> list[Api.SuperEquip]:
             ep = self.bot.api_url / "super" / "search_equips"
 
             # Search for equip that contains all words
@@ -209,22 +248,23 @@ class EquipCog(commands.Cog):
             resp = await fetch_page(ep, content_type="json")
             return resp
 
-        def fmt(
-            name: str,
-            data: list[Api.SuperEquip],
-            show_link=False,
+        def group_by_name(
+            items: list[Api.SuperEquip],
+        ) -> dict[str, list[Api.SuperEquip]]:
+            map = {}
+            for item in items:
+                map.setdefault(item["name"], []).append(item)
+            return map
+
+        def create_table(
+            items: list[Api.SuperEquip],
             show_buyer=False,
             show_seller=True,
-        ) -> str:
-            def main():
-                tbl = get_table(data, show_link)
-                msg = "\n".join([f"@ {name}", "", tbl.print()])
-                return msg
-
-            def get_table(items: list[Api.SuperEquip], show_link: bool) -> Table:
-                items = sorted(items, key=lambda d: d["price"] or 0, reverse=True)
+        ) -> Table:
+            def main() -> Table:
                 tbl = Table()
 
+                # Price col
                 prices = [d["price"] or 0 for d in items]
                 price_col = Col(
                     title="Price",
@@ -233,37 +273,36 @@ class EquipCog(commands.Cog):
                 )
                 tbl.add_col(price_col, prices)
 
-                levels = [d["level"] or 0 for d in items]
-                level_col = Col(title="Level", align="right")
-                tbl.add_col(level_col, levels)
-
-                stats = [d["stats"] for d in items]
-                stat_col = Col(title="Stats", stringify=fmt_stat_dct)
-                tbl.add_col(stat_col, stats)
-
+                # User cols
                 if show_buyer:
                     buyers = [d["buyer"] or "" for d in items]
                     buyer_col = Col(title="Buyer")
                     tbl.add_col(buyer_col, buyers)
-
                 if show_seller:
                     sellers = [d["seller"] or "" for d in items]
                     seller_col = Col(title="Seller")
                     tbl.add_col(seller_col, sellers)
 
-                # fmt: off
+                # Stats col
+                stats = [d["stats"] for d in items]
+                stat_col = Col(title="Stats", stringify=fmt_stat_dct)
+                tbl.add_col(stat_col, stats)
+
+                # Level col
+                levels = [d["level"] or 0 for d in items]
+                level_col = Col(title="Level", align="right")
+                tbl.add_col(level_col, levels)
+
+                # Date col
                 dates = [
                     (d["auction"]["end_time"], d["auction"]["title"]) for d in items
                 ]
-                def fmt_date(x):
-                    ts, title = x
-                    title_str = "#S" + title[:3].zfill(3)
-                    ts_str = datetime.fromtimestamp(ts).strftime("%m-%Y")
-                    return f"{title_str} / {ts_str}"
-                date_col = Col(title="# Auction / Date", stringify=fmt_date)
+                date_col = Col(
+                    title="# Auction / Date", stringify=lambda x: fmt_date(*x)
+                )
                 tbl.add_col(date_col, dates)
-                # fmt: on
 
+                # Remove padding at edges
                 tbl.cols[0].padding_left = 0
                 tbl.cols[-1].padding_right = 0
 
@@ -272,11 +311,11 @@ class EquipCog(commands.Cog):
             def fmt_stat_dct(x: dict) -> str:
                 def value(k, v) -> int:
                     k = k.lower()
-                    if any(x in k for x in ["edb", "adb", "mdb"]):
+                    if any(x in k for x in ["forged"]):
                         return 30
-                    elif any(x in k for x in ["prof", "blk"]):
+                    elif any(x in k for x in ["edb", "adb", "mdb"]):
                         return 20
-                    elif any(x in k for x in ["dex", "str", "agi", "int", "wis"]):
+                    elif any(x in k for x in ["prof", "blk", "iw"]):
                         return 10
                     else:
                         return 1
@@ -291,6 +330,11 @@ class EquipCog(commands.Cog):
                 text = ", ".join(simplified[:3])
                 clipped = clip(text, 15, "...")
                 return clipped
+
+            def fmt_date(ts, title):
+                title_str = "#S" + title[:3].zfill(3)
+                ts_str = datetime.fromtimestamp(ts).strftime("%m-%Y")
+                return f"{title_str} / {ts_str}"
 
             return main()
 

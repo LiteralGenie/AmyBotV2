@@ -12,7 +12,7 @@ class SuperAuctionJoined(TypedDict):
 class SuperEquip(TypedDict):
     name: str
     eid: int
-    key: int
+    key: str
     is_isekai: bool
     level: int | None
     stats: dict[str, str]

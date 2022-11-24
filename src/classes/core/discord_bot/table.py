@@ -96,7 +96,24 @@ class Table:
         else:
             raise Exception(idx)
 
-    def print(self) -> str:
+    def print(self, cb: Callable[[str, str, int | None], str] | None = None) -> str:
+        """Stringify table
+
+        Args:
+            cb: Callable that accepts (row_text, row_type, row_index).
+                Where row_type is one of
+                    BORDER_OUTER_TOP
+                    TITLE
+                    BORDER_INNER
+                    BODY
+                    BORDER_OUTER_BOTTOM
+                Useful for conditioanlly surrounding each row with something
+
+        Returns:
+            _description_
+        """
+        cb = cb or (lambda text, type, data: text)
+
         # Calculations
         content_widths = [self.get_col_width(idx) for idx in range(self.num_cols)]
 
@@ -123,6 +140,7 @@ class Table:
         if self.draw_outer_borders:
             div = self.row_div * total_width
             div = itx_out + div[1:-1] + itx_out
+            div = cb(div, "BORDER_OUTER_TOP", None)
             table_rows.append(div)
 
         # Column titles
@@ -130,6 +148,7 @@ class Table:
             title_row = self.col_div.join(titles)
             if self.draw_outer_borders:
                 title_row = self.col_div + title_row + self.col_div
+            title_row = cb(title_row, "TITLE", None)
             table_rows.append(title_row)
 
             div = ""
@@ -140,23 +159,26 @@ class Table:
                 div = itx_out + div[:-1] + itx_out
             else:
                 div = div[:-1]
+            div = cb(div, "BORDER_INNER_BOTTOM", None)
             table_rows.append(div)
 
         # Content rows
-        for row in cell_texts:
+        for idx, row in enumerate(cell_texts):
             text = self.col_div.join(row)
             if self.draw_outer_borders:
                 text = self.col_div + text + self.col_div
+            text = cb(text, "BODY", idx)
             table_rows.append(text)
 
         # Outer border, bottom
         if self.draw_outer_borders:
             div = self.row_div * total_width
             div = itx_out + div[1:-1] + itx_out
+            div = cb(div, "BORDER_OUTER_BOTTOM", None)
             table_rows.append(div)
 
         result = "\n".join(table_rows)
-        assert len(result) == self.char_count
+        # assert len(result) == self.char_count
         return result
 
     @property

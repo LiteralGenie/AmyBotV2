@@ -2,6 +2,8 @@ from operator import is_
 import re
 from typing import Any
 
+from yarl import URL
+
 
 def int_to_price(
     price: int | Any, infer_int=False, precision: int | tuple[int, int, int] = 1
@@ -94,3 +96,13 @@ def parse_equip_link(text: str) -> tuple[int, str, bool] | None:
         return (int(eid.group(1)), key.group(1), is_isekai)
 
     return None
+
+
+def create_equip_link(eid: int, key: str, is_isekai=False) -> URL:
+    url = URL("https://hentaiverse.org/")
+    if is_isekai:
+        url /= "isekai"
+    url /= "equip"
+    url /= str(eid)
+    url /= key
+    return url

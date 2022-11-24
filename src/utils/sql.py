@@ -7,7 +7,7 @@ class WhereBuilder:
     mode: Literal["OR", "AND"] = "AND"
     fragments: list["Condition | WhereBuilder"] = field(default_factory=list)
 
-    def add(self, expr: str, data: Any):
+    def add(self, expr: str, data: Any = None):
         self.fragments.append(Condition(expr, data))
 
     def add_builder(self, builder: "WhereBuilder"):
@@ -23,7 +23,8 @@ class WhereBuilder:
             for frag in self.fragments:
                 if isinstance(frag, Condition):
                     exprs.append(frag.expr)
-                    data.append(str(frag.data))
+                    if frag.data is not None:
+                        data.append(str(frag.data))
                 elif isinstance(frag, WhereBuilder):
                     e, d = frag.print(root=False)
                     exprs.append(e)
@@ -43,4 +44,4 @@ class WhereBuilder:
 @dataclass
 class Condition:
     expr: str
-    data: Any
+    data: Any = None
