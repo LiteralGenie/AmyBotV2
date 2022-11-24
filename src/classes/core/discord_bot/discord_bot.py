@@ -1,5 +1,6 @@
 import discord
 import toml
+from yarl import URL
 from classes.core.discord_bot.equip_cog import EquipCog
 from classes.core.discord_bot.meta_cog import MetaCog
 from config import paths
@@ -13,6 +14,7 @@ logger = logger.bind(tags=["discord_bot"])
 class DiscordBot(commands.Bot):
     secrets: dict
     config: dict
+    api_url: URL
 
     def run(self):
         assert self.secrets
@@ -37,7 +39,9 @@ class DiscordBot(commands.Bot):
 
     def reload_config(self):
         self.config = toml.load(paths.CONFIG_DIR / "discord_bot.toml")
+
         self.command_prefix = self.config["prefix"]
+        self.api_url = URL(self.config["api_url"])
 
     ###
 

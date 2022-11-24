@@ -5,7 +5,7 @@ from typing import Optional
 
 from classes.core.server import logger
 from classes.core.server.middleware import ErrorLog, RequestLog, PerformanceLog
-from classes.db import init_db
+from classes.db import get_db
 from fastapi import Depends, FastAPI, HTTPException
 from utils.sql import WhereBuilder
 
@@ -28,7 +28,7 @@ def get_search_equips(
     seller_partial: Optional[str] = None,
     buyer: Optional[str] = None,
     buyer_partial: Optional[str] = None,
-    DB: Connection = Depends(init_db),
+    DB: Connection = Depends(get_db),
 ):
     where_builder = WhereBuilder("AND")
 

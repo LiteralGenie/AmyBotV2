@@ -3,14 +3,14 @@ import sqlite3
 from config import paths
 
 
-def init_db() -> sqlite3.Connection:
+def get_db() -> sqlite3.Connection:
     DB = sqlite3.connect(paths.DATA_DIR / "db.sqlite")
     DB.row_factory = sqlite3.Row
     return DB
 
 
 def create_tables():
-    DB = init_db()
+    DB = get_db()
 
     with DB:
         DB.execute(

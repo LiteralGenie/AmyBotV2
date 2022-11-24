@@ -2,6 +2,7 @@
   "python.formatting.provider": "black",
   "editor.formatOnType": true,
   "python.analysis.typeCheckingMode": "basic",
+  "autoDocstring.docstringFormat": "google-notypes",
   // ??? - https://github.com/microsoft/pylance-release/issues/3579
   "python.analysis.autoImportCompletions": true,
 }

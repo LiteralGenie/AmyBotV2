@@ -12,7 +12,7 @@ from config import logger
 from utils.json_cache import JsonCache
 from utils.parse import parse_equip_link, price_to_int
 from utils.rate_limit import rate_limit
-from utils.scrape import fetch_page
+from utils.http import fetch_page
 from yarl import URL
 
 super_limit = rate_limit(calls=1, period=5, scope="super")

@@ -4,5 +4,6 @@ cache/
 venv/
 
 *.log
+*.log.gz
 *.pyc
 *.sqlite

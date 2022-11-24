@@ -1,4 +1,4 @@
-from .tables import create_tables, init_db
+from .tables import create_tables, get_db
 
 create_tables()
-DB = init_db()
+DB = get_db()
