@@ -27,7 +27,7 @@ def _extract(text: str, patt: re.Pattern):
     m = re.search(patt, text)
     if m:
         rem = text[: m.start(1)] + text[m.end(1) :]
-        val = m.group(1)
+        val = m.group(2)
         return (rem, val)
     else:
         return (text, None)
@@ -39,7 +39,7 @@ class YearKey(Keyword):
     @classmethod
     def extract(cls, text: str) -> tuple[str, str | None]:
         """Extract years like "2022" """
-        PATT = re.compile(r"\b(\d{4})\b")
+        PATT = re.compile(r"\b((\d{4}))\b")
         return _extract(text, PATT)
 
     @classmethod
@@ -59,7 +59,7 @@ class MinPriceKey(Keyword):
     @classmethod
     def extract(cls, text: str) -> tuple[str, str | None]:
         """Extract prices like "min500k" """
-        PATT = re.compile(r"\bmin ?(\d+[mkc]?)")
+        PATT = re.compile(r"\b(min ?(\d+[mkc]?))")
         return _extract(text, PATT)
 
     @classmethod
@@ -76,7 +76,7 @@ class MaxPriceKey(Keyword):
     @classmethod
     def extract(cls, text: str) -> tuple[str, str | None]:
         """Extract prices like "max500k" """
-        PATT = re.compile(r"\bmax ?(\d+[mkc]?)")
+        PATT = re.compile(r"\b(max ?(\d+[mkc]?))")
         return _extract(text, PATT)
 
     @classmethod
@@ -109,7 +109,7 @@ class BuyerKey(Keyword):
     @classmethod
     def extract(cls, text: str) -> tuple[str, str | None]:
         """Extract users like buyerGENIE"""
-        PATT = re.compile(r"\bbuyer(\w*)")
+        PATT = re.compile(r"\b(buyer(\w*))")
         return _extract(text, PATT)
 
 
@@ -119,5 +119,5 @@ class SellerKey(Keyword):
     @classmethod
     def extract(cls, text: str) -> tuple[str, str | None]:
         """Extract users like sellerGENIE"""
-        PATT = re.compile(r"\bseller(\w*)")
+        PATT = re.compile(r"\b(seller(\w*))")
         return _extract(text, PATT)

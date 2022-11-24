@@ -53,7 +53,7 @@ class Table:
 
     col_div = "|"
     row_div = "-"
-    intersection_inner = "|"
+    intersection_inner = "-"
     intersection_outer = "+"
 
     def __post_init__(self):

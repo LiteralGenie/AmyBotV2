@@ -1,5 +1,8 @@
 import re
 from typing import Optional
+from config import logger
+
+logger = logger.bind(tags=["discord_bot"])
 
 
 def alias_by_prefix(
@@ -95,5 +98,116 @@ def extract_quoted(
             else:
                 break
         return prefix if prefix else None
+
+    return main()
+
+
+def paginate(*texts: str, page_size=1950) -> list[str]:
+    def main():
+        lines = to_lines(texts)
+        cbs = find_code_blocks(lines)
+        pages: list[list[str]] = []
+
+        # Reserve space for wrapping a page in codeblock (```py...```)
+        CODEBLOCK_SIZE = 12
+
+        pg: list[str] = []
+        pg_top = 0
+        content_size = 0  # sum of line lengths, excluding \n
+        for idx in range(len(lines)):
+            line = lines[idx]
+            total_size = content_size + len(line) + len(pg)
+
+            # Handle edge case of insanely long line
+            if len(line) > page_size - CODEBLOCK_SIZE:
+                logger.warning(f"Truncating long line: {line}")
+                line = line[: page_size - CODEBLOCK_SIZE]
+
+            # Check if new page needed
+            if total_size > page_size - CODEBLOCK_SIZE:
+                # Fix any broken code blocks
+                cb_top = find_cb(pg_top, cbs)
+                if cb_top and cb_top[0] != pg_top:
+                    pg = [f"```{cb_top[2]}"] + pg
+
+                cb_bot = find_cb(idx, cbs)
+                if cb_bot and cb_bot[1] != idx:
+                    pg.append("```")
+
+                # Start new page
+                pg_top = idx
+                pages.append(pg)
+                pg = [line]
+                content_size = len(line)
+            else:
+                pg.append(line)
+                content_size += len(line)
+
+        if pg:
+            # Fix any broken code blocks
+            cb_top = find_cb(pg_top, cbs)
+            if cb_top and cb_top[0] != pg_top:
+                pg = [f"```{cb_top[2]}"] + pg
+
+            # New page
+            pages.append(pg)
+
+        result = ["\n".join(pg) for pg in pages]
+        return result
+
+    def to_lines(texts: tuple[str]) -> list[str]:
+        lines = []
+        for t in texts:
+            lns = [x for x in t.split("\n")]
+            lines.extend(lns)
+        return lines
+
+    def find_code_blocks(lines: list[str]) -> list[tuple[int, int, str]]:
+        """Find markdown-style code blocks (start (inclusive) / end (exclusive) / language)
+
+        Code blocks are surrounded by ```
+        Insane cases like `````` are not considered
+
+        None of the [start, end) intervals returned should overlap
+        """
+        blocks: list[tuple[int, int, str]] = []
+
+        start = None
+        lang = ""
+        for idx, l in enumerate(lines):
+            ms = re.findall(r"```(\w*)", l)
+            if len(ms) == 1:
+                if start is None:
+                    # Found start
+                    start = idx
+                    lang = ms[0]
+                else:
+                    # Found end
+                    blocks.append((start, idx + 1, lang))
+                    start = None
+                    lang = ""
+            elif len(ms) == 2:
+                if start is None:
+                    # Found one-liner
+                    blocks.append((idx, idx + 1, ms[0]))
+                else:
+                    # Found end of old one and start of new one
+                    blocks.append((start, idx + 1, ms[1]))
+                    start = idx
+            elif len(ms) > 2:
+                # Ignore the crazy, output is probably wrong from here on
+                logger.warning(f">6 backticks on line: {l}")
+
+        return blocks
+
+    def find_cb(
+        idx: int, cbs: list[tuple[int, int, str]]
+    ) -> tuple[int, int, str] | None:
+        for cb in cbs:
+            (start, end, _) = cb
+            if idx >= start and idx < end:
+                return cb
+        else:
+            return None
 
     return main()
