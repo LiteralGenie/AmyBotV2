@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import partial
 from typing import Optional
 
 from classes.core.discord_bot.keywords import (
@@ -11,13 +12,16 @@ from classes.core.discord_bot.keywords import (
     SellerKey,
     YearKey,
 )
+from classes.core.discord_bot.table import Col, Table, clip
+from classes.core.server import types as Api
 from discord import Interaction, app_commands
+from discord.ext.commands import Context
 from discord.ext import commands
 from utils.discord import alias_by_prefix, extract_quoted
 from utils.http import fetch_page
-from utils.parse import price_to_int
+from utils.parse import int_to_price
 
-from . import discord_bot
+from classes.core import discord_bot
 
 
 @dataclass
@@ -52,14 +56,13 @@ class EquipCog(commands.Cog):
             link=LinkKey.convert(link),
             min_price=MaxPriceKey.convert(min),
             max_price=MaxPriceKey.convert(max),
-            seller_partial=SellerKey.convert(seller),
-            buyer_partial=BuyerKey.convert(buyer),
+            seller=SellerKey.convert(seller),
+            buyer=BuyerKey.convert(buyer),
         )
-        print(data)
         resp = await self._equip(data)
 
     @commands.command(name="equip", aliases=alias_by_prefix("equip", starting_at=2))
-    async def text_equip(self, ctx, *, msg: str):
+    async def text_equip(self, ctx: Context, *, msg: str):
         async def main():
             data = parse(msg)
             resp = await self._equip(data)
@@ -71,8 +74,8 @@ class EquipCog(commands.Cog):
                 (LinkKey, "link"),
                 (MinPriceKey, "min_price"),
                 (MaxPriceKey, "max_price"),
-                (SellerKey, "seller_partial"),
-                (BuyerKey, "buyer_partial"),
+                (SellerKey, "seller"),
+                (BuyerKey, "buyer"),
             ]
             rem = text
 
@@ -111,10 +114,11 @@ class EquipCog(commands.Cog):
     async def _equip(self, params: dict) -> str:
         async def main():
             data = await fetch()
-            print(len(data), str(data)[:100])
-            return str(data)
+            msg = fmt(data, show_link=params.get("link", False))
+            print(msg)
+            return msg
 
-        async def fetch() -> list:
+        async def fetch() -> list[Api.SuperEquip]:
             ep = self.bot.api_url / "super" / "search_equips"
 
             keys: list[str] = [
@@ -122,8 +126,8 @@ class EquipCog(commands.Cog):
                 "min_date",
                 "min_price",
                 "max_price",
-                "seller_partial",
-                "buyer_partial",
+                "seller",
+                "buyer",
             ]
 
             for k in keys:
@@ -133,7 +137,32 @@ class EquipCog(commands.Cog):
             resp = await fetch_page(ep, content_type="json")
             return resp
 
-        async def fmt():
-            pass
+        def fmt(data: list[Api.SuperEquip], show_link=False) -> str:
+            def main():
+                return fmt_item(data, show_link)
+
+            def fmt_item(data: list[Api.SuperEquip], show_link: bool) -> str:
+                data = sorted(data, key=lambda d: d["price"] or 0, reverse=True)
+                tbl = Table()
+
+                prices = [d["price"] or 0 for d in data]
+                price_col = Col(
+                    title="Price",
+                    stringify=lambda x: int_to_price(x, precision=(0, 0, 1)),
+                    align="right",
+                )
+                tbl.add_col(price_col, prices)
+
+                levels = [d["level"] or 0 for d in data]
+                level_col = Col(title="Level")
+                tbl.add_col(level_col, levels)
+
+                stats = [d["stats"] or 0 for d in data]
+                stat_col = Col(title="Stats", stringify=lambda x: clip(x, 15, "..."))
+                tbl.add_col(stat_col, stats)
+
+                return tbl.print()
+
+            return main()
 
         return await main()

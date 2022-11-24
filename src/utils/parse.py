@@ -1,5 +1,50 @@
 from operator import is_
 import re
+from typing import Any
+
+
+def int_to_price(
+    price: int | Any, infer_int=False, precision: int | tuple[int, int, int] = 1
+) -> str:
+    """Converts a number (50,000) to a value with units (50k)
+
+    Args:
+        price:
+        infer_int: Return ints where possible (eg return 3m instead of 3.0m)
+        precision: Number of decimal places. To use different precisions for different magnitudes (c, m, k), provide a sequence. Defaults to 1.
+    """
+    digits = re.sub(r"[^\d]", "", str(price))
+    value = int(digits)
+    UNITS = "ckm"
+
+    if value >= 10**6:
+        unit_value = value / 10**6
+        unit = UNITS[2]
+    elif value >= 10**3:
+        unit_value = value / 10**3
+        unit = UNITS[1]
+    else:
+        unit_value = value / 1.0
+        unit = UNITS[0]
+
+    if infer_int and unit_value.is_integer():
+        unit_value = int(unit_value)
+    elif isinstance(precision, int):
+        unit_value = int(unit_value * 10**precision) / 10**precision
+    elif (
+        isinstance(precision, tuple)
+        and len(precision) == 3
+        and all(isinstance(x, int) for x in precision)
+    ):
+        p = precision[UNITS.index(unit)]
+        if p != 0:
+            unit_value = int(unit_value * 10**p) / 10**p
+        else:
+            unit_value = int(unit_value)
+    else:
+        raise Exception(precision)
+
+    return f"{unit_value}{unit}"
 
 
 def price_to_int(x: str) -> int:
