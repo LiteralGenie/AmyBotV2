@@ -43,6 +43,7 @@ def create_tables():
 
                 price               INTEGER,
                 bid_link            TEXT,
+                next_bid            INTEGER     NOT NULL,
                 buyer               TEXT,
                 seller              TEXT        NOT NULL,
 
@@ -64,6 +65,7 @@ def create_tables():
 
                 price               INTEGER,
                 bid_link            TEXT,
+                next_bid            INTEGER     NOT NULL,
                 buyer               TEXT,
                 seller              TEXT        NOT NULL,
 

@@ -22,6 +22,7 @@ super_limit = rate_limit(calls=1, period=5, scope="super")
 class Cell:
     text: str
     href: str | None
+    td: Tag
 
 
 class SuperScraper:
@@ -32,19 +33,50 @@ class SuperScraper:
 
     @classmethod
     async def fetch_updates(cls):
-        """Fetch auctions that haven't been parsed yet"""
-        with DB:
-            rows = DB.execute(
-                """
-                SELECT id, is_complete FROM super_auctions
-                WHERE last_fetch_time is NULL
-                OR is_complete = 0
-                OR is_complete is NULL
-                """
-            ).fetchall()
+        async def main():
+            """Fetch auctions that haven't been parsed yet"""
+            with DB:
+                rows = DB.execute(
+                    """
+                    SELECT id, is_complete FROM super_auctions
+                    WHERE last_fetch_time = 0
+                    OR is_complete = 0
+                    OR is_complete is NULL
+                    """
+                ).fetchall()
 
-        for r in rows:
-            await cls.fetch_auction(r["id"], allow_cached=r["is_complete"] == 0)
+            for r in rows:
+                if r["is_complete"] is None:
+                    await cls.fetch_auction(r["id"], allow_cached=True)
+                elif r["is_complete"] == 0:
+                    await cls.fetch_auction(r["id"], allow_cached=False)
+                elif r["is_complete"] == 1:
+                    # Retry auctions with fails
+                    with DB:
+                        fails = DB.execute(
+                            """
+                            SELECT * FROM super_fails
+                            WHERE id_auction = ?
+                            """,
+                            (r["id"]),
+                        ).fetchall()
+
+                        if len(fails) > 0:
+                            purge_auction(r["id"], equips=True, mats=True, fails=True)
+                            await cls.fetch_auction(r["id"], allow_cached=True)
+
+        def purge_auction(
+            id: str, listing=False, equips=False, mats=False, fails=False
+        ) -> None:
+            # fmt: off
+            with DB:
+                if fails: DB.execute("DELETE FROM super_fails WHERE id_auction = ?",(id,),)
+                if equips: DB.execute("DELETE FROM super_equips WHERE id_auction = ?",(id,),)
+                if mats: DB.execute("DELETE FROM super_items WHERE id_auction = ?",(id,),)
+                if listing: DB.execute("DELETE FROM super_auctions WHERE id_auction = ?",(id,),)
+            # fmt: on
+
+        return await main()
 
     @classmethod
     @super_limit
@@ -71,7 +103,7 @@ class SuperScraper:
 
         def parse_row(tr: bs4.Tag) -> dict:
             # Check pre-conditions
-            cells = [cls._el_to_dict(td) for td in tr.select("td")]
+            cells = [cls._td_to_dict(td) for td in tr.select("td")]
             [idxCell, dateCell, _, _, _, threadCell] = cells
             assert threadCell.href
 
@@ -129,8 +161,7 @@ class SuperScraper:
             trs = page.select("tbody > tr")
             rows: list[list[Cell]] = []
             for tr in trs:
-                cells = [cls._el_to_dict(td) for td in tr.select("td")]
-                assert len(cells) == 6
+                cells = cls.item_row_to_cells(tr)
                 rows.append(cells)
 
             # Parse auction data
@@ -154,15 +185,15 @@ class SuperScraper:
                             (item_code, auction_id, item_name, str(tr)),
                         )
 
-            # Update db
+            # Update item data in db
             with DB:
                 for item in item_data:
                     if item["_type"] == "equip":
                         DB.execute(
                             """
                             INSERT OR REPLACE INTO super_equips 
-                            (id, id_auction, name, eid, key, is_isekai, level, stats, price, bid_link, buyer, seller)
-                            VALUES (:id, :id_auction, :name, :eid, :key, :is_isekai, :level, :stats, :price, :bid_link, :buyer, :seller)
+                            (id, id_auction, name, eid, key, is_isekai, level, stats, price, bid_link, next_bid, buyer, seller)
+                            VALUES (:id, :id_auction, :name, :eid, :key, :is_isekai, :level, :stats, :price, :bid_link, :next_bid, :buyer, :seller)
                             """,
                             item,
                         )
@@ -170,11 +201,23 @@ class SuperScraper:
                         DB.execute(
                             """
                             INSERT OR REPLACE INTO super_mats 
-                            (id, id_auction, name, quantity, unit_price, price, bid_link, buyer, seller)
-                            VALUES (:id, :id_auction, :name, :quantity, :unit_price, :price, :bid_link, :buyer, :seller)
+                            (id, id_auction, name, quantity, unit_price, price, bid_link, next_bid, buyer, seller)
+                            VALUES (:id, :id_auction, :name, :quantity, :unit_price, :price, :bid_link, :next_bid, :buyer, :seller)
                             """,
                             item,
                         )
+
+            # Update auction status in db
+            with DB:
+                is_complete = "Auction ended" in page.select_one("#timing").text  # type: ignore
+                with DB:
+                    DB.execute(
+                        """
+                        UPDATE super_auctions SET
+                            is_complete = ?
+                        """,
+                        (is_complete,),
+                    )
 
             return item_data
 
@@ -196,15 +239,13 @@ class SuperScraper:
                 page = await _fetch()
 
                 # Update db
-                is_complete = "Auction ended" in page.select_one("#timing").text  # type: ignore
                 with DB:
                     DB.execute(
                         """
                         UPDATE super_auctions SET
-                            is_complete = ?,
                             last_fetch_time = ?
                         """,
-                        (is_complete, time.time()),
+                        (time.time(),),
                     )
             else:
                 page = BeautifulSoup(cls.html_cache[path], "html.parser")
@@ -212,12 +253,14 @@ class SuperScraper:
             return page
 
         def parse_quirky_row(auction_id: str, cells: list[Cell]) -> dict | None:
-            [codeCell, nameCell, infoCell, *_] = cells
+            [codeCell, nameCell, infoCell, _, nextBidCell, *_] = cells
 
             if auction_id == "194262" and codeCell.text == "Mat00":
                 # Pony figurine set -> 1 Pony figurine set
                 nameCell.text = "1 " + nameCell.text
                 return parse_mat_row(cells)
+            if auction_id == "194041" and "Bid" in nextBidCell.text:
+                nextBidCell.text = nextBidCell.td.text.replace("Bid", "")
             if infoCell.text.startswith("seller: "):
                 logger.info(
                     f'Discarding info "{infoCell.text}" for "{nameCell.text}" in auction {auction_id}'
@@ -235,7 +278,7 @@ class SuperScraper:
                 return parse_equip_row(cells)
 
         def parse_mat_row(rowEls: list[Cell]) -> dict:
-            [codeCell, nameCell, _, currentBidCell, _, sellerCell] = rowEls
+            [codeCell, nameCell, _, currentBidCell, nextBidCell, sellerCell] = rowEls
 
             id = codeCell.text
             seller = sellerCell.text
@@ -246,6 +289,8 @@ class SuperScraper:
             [buyer, bid_link, price] = parse_price_buyer(currentBidCell)
             unit_price = price / quantity if price else None
 
+            next_bid = price_to_int(nextBidCell.text)
+
             data = dict(
                 _type="mat",
                 id=id,
@@ -254,19 +299,28 @@ class SuperScraper:
                 unit_price=unit_price,
                 price=price,
                 bid_link=bid_link,
+                next_bid=next_bid,
                 buyer=buyer,
                 seller=seller,
             )
             return data
 
         def parse_equip_row(cells: list[Cell]) -> dict:
-            [codeCell, nameCell, infoCell, currentBidCell, _, sellerCell] = cells
+            [
+                codeCell,
+                nameCell,
+                infoCell,
+                currentBidCell,
+                nextBidCell,
+                sellerCell,
+            ] = cells
 
             id = codeCell.text
             name = nameCell.text
             seller = sellerCell.text
             [eid, key, is_isekai] = parse_equip_link(nameCell.href)  # type: ignore
             [buyer, bid_link, price] = parse_price_buyer(currentBidCell)
+            next_bid = price_to_int(nextBidCell.text)
 
             if infoCell.text == "":
                 # Super didn't provide any info
@@ -305,6 +359,7 @@ class SuperScraper:
                 stats=stats,
                 price=price,
                 bid_link=bid_link,
+                next_bid=next_bid,
                 buyer=buyer,
                 seller=seller,
             )
@@ -327,11 +382,21 @@ class SuperScraper:
 
         return await main()
 
-    @staticmethod
-    def _el_to_dict(el: Tag) -> Cell:
-        a = el.select_one("a")
-        result = Cell(text=el.text, href=str(a["href"]) if a else None)
+    @classmethod
+    def _td_to_dict(cls, td: Tag) -> Cell:
+        a = td.select_one("a")
+        result = Cell(text=td.text, href=str(a["href"]) if a else None, td=td)
         return result
+
+    @classmethod
+    def item_row_to_cells(cls, tr: Tag) -> list[Cell]:
+        tds = tr.select("td")
+        assert len(tds) == 6
+
+        cells = [cls._td_to_dict(td) for td in tr.select("td")]
+        cells[4].text = tds[4].select_one("div:not(.customButton)").text  # type: ignore
+
+        return cells
 
 
 if __name__ == "__main__":

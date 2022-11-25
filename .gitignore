@@ -7,3 +7,4 @@ venv/
 *.log.gz
 *.pyc
 *.sqlite
+*.fuse*

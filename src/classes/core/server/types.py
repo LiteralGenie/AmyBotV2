@@ -17,6 +17,7 @@ class SuperEquip(TypedDict):
     level: int | None
     stats: dict[str, str]
     price: int | None
+    next_bid: int
     buyer: str | None
     seller: str
     auction: SuperAuctionJoined

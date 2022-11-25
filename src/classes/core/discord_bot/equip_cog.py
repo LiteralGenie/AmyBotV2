@@ -265,12 +265,8 @@ class EquipCog(commands.Cog):
                 tbl = Table()
 
                 # Price col
-                prices = [d["price"] or 0 for d in items]
-                price_col = Col(
-                    title="Price",
-                    stringify=lambda x: int_to_price(x, precision=(0, 0, 1)),
-                    align="right",
-                )
+                prices = items
+                price_col = Col(title="Price", stringify=fmt_price, align="right")
                 tbl.add_col(price_col, prices)
 
                 # User cols
@@ -307,6 +303,19 @@ class EquipCog(commands.Cog):
                 tbl.cols[-1].padding_right = 0
 
                 return tbl
+
+            def fmt_price(item: Api.SuperEquip) -> str:
+                price = item["price"]
+                next_bid = item["next_bid"]
+
+                if price is None or price <= 0:
+                    next_bid_str = int_to_price(next_bid, precision=(0, 0, 1))
+                    next_bid_str = f"({next_bid_str})"
+                    return next_bid_str
+                elif price > 0:
+                    return int_to_price(price, precision=(0, 0, 1))
+                else:
+                    raise Exception("Pylance please...")
 
             def fmt_stat_dct(x: dict) -> str:
                 def value(k, v) -> int:
