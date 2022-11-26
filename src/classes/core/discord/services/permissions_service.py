@@ -1,10 +1,9 @@
-import asyncio
 import copy
 from pathlib import Path
 from typing import Optional, TypedDict
+from classes.core.discord.watchers import DirectoryWatcher
 
 from config import logger, paths
-from hachiko.hachiko import AIOEventHandler, AIOWatchdog
 from tomlkit.toml_document import TOMLDocument
 from utils.misc import dump_toml, load_toml
 
@@ -47,8 +46,10 @@ class PermissionsService:
         for fp in paths.PERMS_DIR.glob("*.toml"):
             self.load_file(fp, invalidate=True)
 
-        # Watch for changes
-        _PermDirWatcher(self).start()
+        # Watch for perm file edits
+        DirectoryWatcher(
+            paths.PERMS_DIR, self.load_file, lambda x: x.suffix == ".toml"
+        ).start()
 
     def check(
         self,
@@ -117,7 +118,7 @@ class PermissionsService:
             if invalidate:
                 rename()
                 if guild_id in self.perms:
-                    logger.exception(f"Reverting {fp} to previous state")
+                    logger.exception(f"Reverting perms file to previous state: {fp}")
                     dump_toml(self.perms[guild_id], fp)
 
     def register_guild(self, id: int) -> None:
@@ -164,30 +165,3 @@ class PermissionsService:
                 raise Exception
 
         return main()
-
-
-class _PermDirWatcher(AIOEventHandler):
-    def __init__(self, service: PermissionsService):
-        super().__init__(loop=asyncio.get_running_loop())
-        self.service = service
-
-    def start(self):
-        AIOWatchdog(str(paths.PERMS_DIR), event_handler=self).start()
-
-    async def on_created(self, event):
-        if not self._is_toml_file(event.src_path):
-            return
-
-        logger.debug(f"Perm file created: {event.src_path}")
-        self.service.load_file(Path(event.src_path))
-
-    async def on_modified(self, event):
-        if not self._is_toml_file(event.src_path):
-            return
-
-        logger.debug(f"Perm file updated: {event.src_path}")
-        self.service.load_file(Path(event.src_path))
-
-    @staticmethod
-    def _is_toml_file(fp: str):
-        return fp.lower().endswith(".toml")

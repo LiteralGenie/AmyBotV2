@@ -1,10 +1,12 @@
-secrets.toml
+src/config/default_perms.toml
+src/config/discord_config.toml
+src/config/secrets.toml
 
-cache/
+src/data/cache/
 src/data/perms/*.toml
-src/data/perms/*.invalid
 venv/
 
+*.invalid
 *.log
 *.log.gz
 *.pyc
