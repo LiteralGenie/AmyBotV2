@@ -1,6 +1,8 @@
 secrets.toml
 
 cache/
+src/data/perms/*.toml
+src/data/perms/*.invalid
 venv/
 
 *.log

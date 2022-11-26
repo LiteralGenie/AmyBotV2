@@ -2,8 +2,9 @@ from dataclasses import dataclass
 from datetime import datetime
 import re
 from typing import Any, Callable, Optional
+from classes.core.discord.checks import app_check_perms, check_perms
 
-from classes.core.discord_bot.keywords import (
+from classes.core.discord.keywords import (
     BuyerKey,
     LinkKey,
     MaxPriceKey,
@@ -11,7 +12,7 @@ from classes.core.discord_bot.keywords import (
     SellerKey,
     YearKey,
 )
-from classes.core.discord_bot.table import Col, Table, clip
+from classes.core.discord.table import Col, Table, clip
 from classes.core.server import types as Api
 from discord import Interaction, app_commands
 from discord.ext.commands import Context
@@ -20,14 +21,14 @@ from utils.discord import alias_by_prefix, extract_quoted, paginate
 from utils.http import fetch_page
 from utils.misc import compose_1arg_fns
 from utils.parse import create_equip_link, int_to_price
-from classes.core.discord_bot import types as types
+from classes.core.discord import types as types
 
-from classes.core import discord_bot
+from classes.core import discord
 
 
 @dataclass
 class EquipCog(commands.Cog):
-    bot: "discord_bot.DiscordBot"
+    bot: "discord.AmyBot"
 
     @app_commands.command(name="equip")
     @app_commands.describe(
@@ -39,6 +40,7 @@ class EquipCog(commands.Cog):
         seller="Username of seller",
         buyer="Username of buyer",
     )
+    @app_commands.check(app_check_perms("equip"))
     async def app_equip(
         self,
         itn: Interaction,
@@ -73,9 +75,32 @@ class EquipCog(commands.Cog):
         if show_buyer or buyer:
             opts["show_buyer"] = True
 
-        resp = await self._equip(params, opts)
+        # for pg in await self._equip(params, opts):
+        pages = await self._equip(params, opts)
+        if len(pages) == 1:
+            await itn.response.send_message(pages[0])
+        elif len(pages) > 1:
+            # Create pages-omitted-warning
+            if (rem := len(pages) - 1) == 1:
+                trailer = "1 page omitted. Try !equip to see more."
+            else:
+                trailer = f"{rem} pages omitted. Try !equip to see more."
+            if pages[0][-3:] != "```":
+                trailer = "\n" + trailer
 
-    @commands.command(name="equip", aliases=alias_by_prefix("equip", starting_at=2))
+            # Append
+            resp = paginate(pages[0], page_size=2000 - len(trailer))
+            resp = resp[0] + trailer
+
+            # Send
+            await itn.response.send_message(resp)
+
+    @commands.command(
+        name="equip",
+        aliases=alias_by_prefix("equip", starting_at=2),
+        extras=dict(id="equip"),
+    )
+    @commands.check(check_perms("equip"))
     async def text_equip(self, ctx: Context, *, msg: str):
         async def main():
             params, opts = parse(msg)

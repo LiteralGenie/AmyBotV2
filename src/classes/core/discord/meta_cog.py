@@ -5,12 +5,12 @@ import discord
 from discord.ext import commands
 from discord.ext.commands import Context
 
-from . import discord_bot
+from . import amy_bot
 
 
 @dataclass
 class MetaCog(commands.Cog):
-    bot: "discord_bot.DiscordBot"
+    bot: "amy_bot.AmyBot"
 
     @commands.command(name="enable_slash_commands")
     async def enable_slash_commands(self, ctx: Context, guild_id: Optional[int]):

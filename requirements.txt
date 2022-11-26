@@ -2,8 +2,9 @@ aiohttp
 bs4
 discord.py
 fastapi
-html.parser
+hachiko
 loguru
-toml
+lxml
+tomlkit
 uvicorn
 yarl

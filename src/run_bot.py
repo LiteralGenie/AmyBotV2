@@ -1,4 +1,4 @@
 if __name__ == "__main__":
-    from classes.core.discord_bot import bot
+    from classes.core.discord import bot
 
     bot.run()
