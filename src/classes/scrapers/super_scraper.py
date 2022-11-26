@@ -210,13 +210,15 @@ class SuperScraper:
             # Update auction status in db
             with DB:
                 is_complete = "Auction ended" in page.select_one("#timing").text  # type: ignore
+                is_complete = int(is_complete)
                 with DB:
                     DB.execute(
                         """
-                        UPDATE super_auctions SET
-                            is_complete = ?
+                        UPDATE super_auctions
+                        SET is_complete = ?
+                        WHERE id = ?
                         """,
-                        (is_complete,),
+                        (is_complete, auction_id),
                     )
 
             return item_data
