@@ -6,7 +6,7 @@ from datetime import datetime
 
 import bs4
 from bs4 import BeautifulSoup, Tag
-from classes.db import DB, create_tables
+from classes.db import DB
 from config import paths
 from config import logger
 from utils.json_cache import JsonCache
@@ -15,11 +15,11 @@ from utils.rate_limit import rate_limit
 from utils.http import fetch_page
 from yarl import URL
 
-super_limit = rate_limit(calls=1, period=5, scope="super")
+_limit = rate_limit(calls=1, period=5, scope="super")
 
 
 @dataclass
-class Cell:
+class _Cell:
     text: str
     href: str | None
     td: Tag
@@ -79,7 +79,7 @@ class SuperScraper:
         return await main()
 
     @classmethod
-    @super_limit
+    @_limit
     async def refresh_list(cls) -> list[dict]:
         """Fetch list of Super's auctions and update DB
 
@@ -159,7 +159,7 @@ class SuperScraper:
         async def main():
             page = await fetch(auction_id, allow_cached=allow_cached)
             trs = page.select("tbody > tr")
-            rows: list[list[Cell]] = []
+            rows: list[list[_Cell]] = []
             for tr in trs:
                 cells = cls.item_row_to_cells(tr)
                 rows.append(cells)
@@ -228,7 +228,7 @@ class SuperScraper:
 
             if not allow_cached or path not in cls.html_cache:
                 # Fetch but rate-limited
-                @super_limit
+                @_limit
                 async def _fetch() -> BeautifulSoup:
                     html: str = await fetch_page(
                         cls.HOME_URL / path, content_type="text"
@@ -254,7 +254,7 @@ class SuperScraper:
 
             return page
 
-        def parse_quirky_row(auction_id: str, cells: list[Cell]) -> dict | None:
+        def parse_quirky_row(auction_id: str, cells: list[_Cell]) -> dict | None:
             [codeCell, nameCell, infoCell, _, nextBidCell, *_] = cells
 
             if auction_id == "194262" and codeCell.text == "Mat00":
@@ -272,14 +272,14 @@ class SuperScraper:
 
             return None
 
-        def parse_row(cells: list[Cell]) -> dict:
+        def parse_row(cells: list[_Cell]) -> dict:
             [codeCell, *_] = cells
             if codeCell.text.startswith("Mat"):
                 return parse_mat_row(cells)
             else:
                 return parse_equip_row(cells)
 
-        def parse_mat_row(rowEls: list[Cell]) -> dict:
+        def parse_mat_row(rowEls: list[_Cell]) -> dict:
             [codeCell, nameCell, _, currentBidCell, nextBidCell, sellerCell] = rowEls
 
             id = codeCell.text
@@ -307,7 +307,7 @@ class SuperScraper:
             )
             return data
 
-        def parse_equip_row(cells: list[Cell]) -> dict:
+        def parse_equip_row(cells: list[_Cell]) -> dict:
             [
                 codeCell,
                 nameCell,
@@ -332,7 +332,7 @@ class SuperScraper:
                 # Verify we're parsing smth like "500, ADB 94%, EDB 55%, ..."
                 assert re.search(PATTS["level_stats"], infoCell.text)
 
-                [level_text, *stat_list] = infoCell.text.split(",")
+                [level_text, *stats] = infoCell.text.split(",")
                 if level_text == "Unassigned":
                     level = 0
                 elif level_text == "n/a":
@@ -342,12 +342,7 @@ class SuperScraper:
                     if int(level) != float(level):
                         raise Exception
 
-                stat_list = [txt.split(" ") for txt in stat_list]
-                stat_list = [
-                    [" ".join(parts[:-1]).strip(), parts[-1].strip()]
-                    for parts in stat_list
-                ]
-                stats = {k: v for k, v in stat_list}
+                stats = [x.strip() for x in stats]
                 stats = json.dumps(stats)
 
             data = dict(
@@ -368,7 +363,7 @@ class SuperScraper:
             return data
 
         def parse_price_buyer(
-            cell: Cell,
+            cell: _Cell,
         ) -> tuple[str, str | None, int] | tuple[None, None, None]:
             m = PATTS["price_buyer"].search(cell.text)
             if m:
@@ -385,13 +380,13 @@ class SuperScraper:
         return await main()
 
     @classmethod
-    def _td_to_dict(cls, td: Tag) -> Cell:
+    def _td_to_dict(cls, td: Tag) -> _Cell:
         a = td.select_one("a")
-        result = Cell(text=td.text, href=str(a["href"]) if a else None, td=td)
+        result = _Cell(text=td.text, href=str(a["href"]) if a else None, td=td)
         return result
 
     @classmethod
-    def item_row_to_cells(cls, tr: Tag) -> list[Cell]:
+    def item_row_to_cells(cls, tr: Tag) -> list[_Cell]:
         tds = tr.select("td")
         assert len(tds) == 6
 

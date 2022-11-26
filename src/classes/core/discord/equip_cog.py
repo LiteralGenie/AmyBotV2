@@ -306,7 +306,7 @@ class EquipCog(commands.Cog):
 
                 # Stats col
                 stats = [d["stats"] for d in items]
-                stat_col = Col(title="Stats", stringify=fmt_stat_dct)
+                stat_col = Col(title="Stats", stringify=fmt_stats)
                 tbl.add_col(stat_col, stats)
 
                 # Level col
@@ -342,24 +342,23 @@ class EquipCog(commands.Cog):
                 else:
                     raise Exception("Pylance please...")
 
-            def fmt_stat_dct(x: dict) -> str:
-                def value(k, v) -> int:
-                    k = k.lower()
-                    if any(x in k for x in ["forged"]):
+            def fmt_stats(stats: list[str]) -> str:
+                def value(stat) -> int:
+                    stat = stat.lower()
+                    if any(x in stat for x in ["forged"]):
                         return 30
-                    elif any(x in k for x in ["edb", "adb", "mdb"]):
+                    elif any(x in stat for x in ["edb", "adb", "mdb"]):
                         return 20
-                    elif any(x in k for x in ["prof", "blk", "iw"]):
+                    elif any(x in stat for x in ["prof", "blk", "iw"]):
                         return 10
                     else:
                         return 1
 
-                sorted_ = sorted(x.items(), key=lambda it: value(*it), reverse=True)
-                items = [f"{k} {v}" for k, v in sorted_]
+                sorted_ = sorted(stats, key=lambda st: value(st), reverse=True)
 
                 simplified = [
-                    re.sub(r".* ((?:EDB|Prof))", r"\1", x, flags=re.IGNORECASE)
-                    for x in items
+                    re.sub(r".* ((?:EDB|Prof))", r"\1", st, flags=re.IGNORECASE)
+                    for st in sorted_
                 ]
                 text = ", ".join(simplified[:3])
                 clipped = clip(text, 15, "...")
