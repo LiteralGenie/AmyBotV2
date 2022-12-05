@@ -24,6 +24,7 @@ from classes.core.discord.keywords import (
     YearKey,
 )
 from classes.core.discord.table import Col, Table, clip
+from config import logger
 from utils.discord import alias_by_prefix, extract_quoted, paginate
 from utils.http import do_get
 from utils.misc import compose_1arg_fns
@@ -34,6 +35,8 @@ from discord import Interaction, app_commands
 from discord.ext import commands
 from discord.ext.commands import Context
 
+logger = logger.bind(tags=["discord_bot"])
+
 
 @dataclass
 class EquipCog(commands.Cog):
@@ -41,7 +44,7 @@ class EquipCog(commands.Cog):
 
     @app_commands.command(name="equip")
     @app_commands.describe(
-        equip_name='Equip name (eg "leg oak heimd")',
+        name='Equip name (eg "leg oak heimd")',
         year="Ignore old auctions (eg 22)",
         show_link="Show equip link",
         show_thread="Show auction link",
@@ -54,7 +57,7 @@ class EquipCog(commands.Cog):
     async def app_equip(
         self,
         itn: Interaction,
-        equip_name: Optional[str],
+        name: Optional[str],
         year: Optional[int],
         show_link: Optional[bool],
         show_thread: Optional[bool],
@@ -72,7 +75,7 @@ class EquipCog(commands.Cog):
 
         params = types._Equip.FetchParams()
 
-        params["name"] = equip_name or ""
+        params["name"] = name or ""
         params["min_date"] = noop(str, YearKey.convert)(year)
         params["min_price"] = noop(MinPriceKey.convert)(min)
         params["max_price"] = noop(MinPriceKey.convert)(max)
@@ -86,6 +89,8 @@ class EquipCog(commands.Cog):
             opts.show_seller = True
         if show_buyer or buyer:
             opts.show_buyer = True
+
+        logger.debug(f"Invoking app command equip with: {params} {opts}")
 
         # for pg in await self._equip(params, opts):
         pages = await self._equip(params, opts)
