@@ -1,3 +1,4 @@
+import copy
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -119,7 +120,7 @@ class EquipCog(commands.Cog):
             pages = await self._equip(params, opts)
 
             if ctx.guild:
-                [pages_send, pages_save] = [pages[:4], pages[4:]]
+                [pages_send, pages_save] = [pages[:3], pages[3:]]
             else:
                 [pages_send, pages_save] = [pages, []]
 
@@ -131,9 +132,11 @@ class EquipCog(commands.Cog):
 
             # Save the rest for later
             if pages_save:
-                await ctx.send(
+                resp = await ctx.send(
                     f"{len(pages_save)} pages omitted. Use !more to see the rest."
                 )
+                responses.append(resp.id)
+
                 self.bot.watcher_cog.register(
                     MoreWatcher(ctx.channel.id, self.bot, pages_save)
                 )
@@ -237,12 +240,14 @@ class EquipCog(commands.Cog):
             if params.get("thread"):
                 opts.show_thread_link = True
                 del params["thread"]
-            if params.get("seller") is True:
+            if params.get("seller"):
                 opts.show_seller = True
-                del params["seller"]
-            if params.get("buyer") is True:
+                if params["seller"] is True:
+                    del params["seller"]
+            if params.get("buyer"):
                 opts.show_buyer = True
-                del params["buyer"]
+                if params["buyer"] is True:
+                    del params["buyer"]
 
             # Return
             return params, opts  # type: ignore
@@ -256,6 +261,7 @@ class EquipCog(commands.Cog):
             # Fetch data
             warning_params = None
             params_ = params.copy()
+            opts_ = copy.deepcopy(opts)
             items = await _fetch_equips(self.bot.api_url, params_)
 
             # If no results, allow partial seller
@@ -296,7 +302,12 @@ class EquipCog(commands.Cog):
                 or len(buyers) == 1
                 and None not in buyers
             ):
-                user = sellers[0] if len(sellers) == 1 else buyers[0]
+                if len(sellers) == 1:
+                    user = sellers[0]
+                    opts_.show_seller = False
+                else:
+                    user = buyers[0]
+                    opts_.show_buyer = False
 
                 items = sorted(
                     items, key=lambda it: it["auction"]["time"], reverse=True
@@ -305,12 +316,12 @@ class EquipCog(commands.Cog):
                 item_table = create_item_table(
                     items,
                     show_name=True,
-                    show_buyer=opts.show_buyer,
-                    show_seller=opts.show_seller,
+                    show_buyer=opts_.show_buyer,
+                    show_seller=opts_.show_seller,
                 )
 
-                if opts.show_equip_link or opts.show_thread_link:
-                    link_type = "equip" if opts.show_equip_link else "thread"
+                if opts_.show_equip_link or opts_.show_thread_link:
+                    link_type = "equip" if opts_.show_equip_link else "thread"
                     sales_table_text = sales_table.print()
                     item_table_text = item_table.print(
                         cb=partial(append_link, items=items, type=link_type)
@@ -340,14 +351,14 @@ class EquipCog(commands.Cog):
                 tables = {
                     name: create_item_table(
                         lst,
-                        show_buyer=opts.show_buyer,
-                        show_seller=opts.show_seller,
+                        show_buyer=opts_.show_buyer,
+                        show_seller=opts_.show_seller,
                     )
                     for name, lst in groups.items()
                 }
 
-                if opts.show_equip_link or opts.show_thread_link:
-                    link_type = "equip" if opts.show_equip_link else "thread"
+                if opts_.show_equip_link or opts_.show_thread_link:
+                    link_type = "equip" if opts_.show_equip_link else "thread"
                     table_texts = {
                         name: tbl.print(
                             cb=partial(append_link, items=grp, type=link_type)
@@ -387,7 +398,7 @@ class EquipCog(commands.Cog):
             items: list[types._Equip.CogEquip],
             show_name=False,
             show_buyer=False,
-            show_seller=True,
+            show_seller=False,
         ) -> Table:
             tbl = Table()
 
