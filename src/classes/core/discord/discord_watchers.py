@@ -31,17 +31,27 @@ class DWatcher:
     guild: int | None = None
 
     cog: "WatcherCog" = None  # type: ignore
-    channel_obj: discord.TextChannel | None = None
+    channel_obj: discord.TextChannel | discord.DMChannel | None = None
     guild_obj: discord.Guild | None = None
+
+    _is_initd = False
 
     def __post_init__(self):
         self.cog = self.bot.get_cog("WatcherCog")  # type: ignore
         assert self.cog is not None
 
-        if self.channel is not None:
-            self.set_channel(self.channel)
-        if self.guild is not None:
-            self.set_guild(self.guild)
+    async def __ainit__(self):
+        if self._is_initd:
+            logger.warning(f"Already init'd watcher: {self}")
+            return self
+        self._is_initd = True
+
+        if self.channel is not None and self.channel_obj is None:
+            await self.set_channel(self.channel)
+        if self.guild is not None and self.guild_obj is None:
+            await self.set_guild(self.guild)
+
+        return self
 
     @classmethod
     def from_ctx(cls, bot: "core.AmyBot", ctx: Context) -> "DWatcher":
@@ -96,26 +106,30 @@ class DWatcher:
         guild = ctx.guild.id if ctx.guild else None
         return self.filter(ctx.message.id, ctx.author.id, ctx.channel.id, guild)
 
+    def filter_by_message(self, ctx: Message) -> bool:
+        guild = ctx.guild.id if ctx.guild else None
+        return self.filter(ctx.id, ctx.author.id, ctx.channel.id, guild)
+
     def filter_by_raw_update(self, ctx: RawMessageUpdateEvent) -> bool:
         return self.filter(ctx.message_id, None, ctx.channel_id, ctx.guild_id)
 
     def filter_by_raw_delete(self, ctx: RawMessageDeleteEvent) -> bool:
         return self.filter(ctx.message_id, None, ctx.channel_id, ctx.guild_id)
 
-    def filter_by_raw_reaction(self, ctx: RawMessageDeleteEvent) -> bool:
+    def filter_by_raw_reaction(self, ctx: RawReactionActionEvent) -> bool:
         return self.filter(ctx.message_id, None, ctx.channel_id, ctx.guild_id)
 
-    def set_channel(self, channel: int) -> None:
+    async def set_channel(self, channel: int) -> None:
         self.channel = channel
 
-        self.channel_obj = self.bot.get_channel(channel)  # type: ignore
+        self.channel_obj = await self.bot.fetch_channel(channel)  # type: ignore
         if self.channel_obj is None:
             raise AssertionError(f"Channel not found: {self.channel}")
         assert isinstance(
-            self.channel_obj, discord.TextChannel
+            self.channel_obj, (discord.TextChannel, discord.DMChannel)
         ), f'Not a TextChannel: {channel} {self.channel_obj.__dict__.get("type")}'
 
-    def set_guild(self, guild: int) -> None:
+    async def set_guild(self, guild: int) -> None:
         self.guild = guild
         self.guild_obj = self.bot.get_guild(guild)
         if self.guild_obj is None:

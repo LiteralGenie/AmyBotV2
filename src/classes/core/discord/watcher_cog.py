@@ -68,24 +68,29 @@ class WatcherCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, ctx: Message):
         for w in self.watchers:
-            await w.on_create(ctx)
+            if w.filter_by_message(ctx):
+                await w.on_create(ctx)
 
     @commands.Cog.listener()
     async def on_raw_message_edit(self, ctx: RawMessageUpdateEvent):
         for w in self.watchers:
-            await w.on_update(ctx)
+            if w.filter_by_raw_update(ctx):
+                await w.on_update(ctx)
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, ctx: RawMessageDeleteEvent):
         for w in self.watchers:
-            await w.on_delete(ctx)
+            if w.filter_by_raw_delete(ctx):
+                await w.on_delete(ctx)
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, ctx: RawReactionActionEvent):
         for w in self.watchers:
-            await w.on_reaction_add(ctx)
+            if w.filter_by_raw_reaction(ctx):
+                await w.on_reaction_add(ctx)
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, ctx: RawReactionActionEvent):
         for w in self.watchers:
-            await w.on_reaction_remove(ctx)
+            if w.filter_by_raw_reaction(ctx):
+                await w.on_reaction_remove(ctx)

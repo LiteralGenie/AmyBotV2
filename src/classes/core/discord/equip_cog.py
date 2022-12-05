@@ -143,14 +143,18 @@ class EquipCog(commands.Cog):
                 responses.append(resp.id)
 
                 self.bot.watcher_cog.register(
-                    MoreWatcher(ctx.channel.id, self.bot, pages_save)
+                    await MoreWatcher(ctx.channel.id, self.bot, pages_save).__ainit__()
                 )
 
             self.bot.watcher_cog.register(
-                DeleteWatcher(ctx.message.id, responses, ctx.channel.id, self.bot)
+                await DeleteWatcher(
+                    ctx.message.id, responses, ctx.channel.id, self.bot
+                ).__ainit__()
             )
             self.bot.watcher_cog.register(
-                EditWatcher(ctx.message.id, responses, ctx.channel.id, self.bot)
+                await EditWatcher(
+                    ctx.message.id, responses, ctx.channel.id, self.bot
+                ).__ainit__()
             )
 
         def parse(
