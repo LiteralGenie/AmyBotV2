@@ -65,8 +65,8 @@ class KedamaScraper:
 
             # Extract listing data
             auction_id = url.query["showtopic"]
-            title = page.select_one(".maintitle td").text  # type: ignore
-            if m := re.search(r"(\d+.?\d*)", title):
+            title = page.select_one(".maintitle td").text.strip()  # type: ignore
+            if m := re.search(r"(\d+\.?\d*)", title):
                 title_short = "K" + m.group(1)
             else:
                 title_short = "K??"
