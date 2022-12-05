@@ -7,6 +7,8 @@ from config import logger, paths
 from tomlkit.toml_document import TOMLDocument
 from utils.misc import dump_toml, load_toml
 
+logger = logger.bind(tags=["discord_bot"])
+
 
 class _PermissionException(TypedDict):
     action: "Required[bool]"
@@ -89,15 +91,15 @@ class PermissionsService:
             return guild_perms["default"]
 
         for ex in exceptions:
-            isUser = ex.get("user") == user
-            isChannel = ex.get("channel") == channel
-            isRole = "role" in ex and all(r in roles for r in ex["role"])
+            isUser = "user" not in ex or ex["user"] == user
+            isChannel = "channel" not in ex or ex["channel"] == channel
+            isRole = "role" not in ex or all(r in roles for r in ex["role"])
 
             if isUser and isChannel and isRole:
                 return ex["action"]
 
-        # Return server default
-        return guild_perms["default"]
+        # Return command default
+        return command_perms["default"]
 
     def load_file(self, fp: Path, invalidate=True):
         def rename():
@@ -143,7 +145,7 @@ class PermissionsService:
                 raise Exception
 
             if "commands" in data:
-                if not isinstance(data, dict):
+                if not isinstance(data["commands"], dict):
                     raise Exception
 
                 for cmd in data["commands"].values():
@@ -154,7 +156,7 @@ class PermissionsService:
                 raise Exception
 
             if "exceptions" in data:
-                if not isinstance(data, list):
+                if not isinstance(data["exceptions"], list):
                     raise Exception
 
                 for ex in data["exceptions"]:
