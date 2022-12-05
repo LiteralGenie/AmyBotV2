@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any, Callable
 
 import tomlkit
 
@@ -25,3 +26,20 @@ def dump_toml(data: tomlkit.TOMLDocument, fp: Path | str) -> None:
 
     with open(fp, "w") as file:
         tomlkit.dump(data, file)
+
+
+def split_lst(lst: list, condition: Callable[[Any], bool]) -> list[list]:
+    result: list[list] = []
+
+    buffer = []
+    for x in lst:
+        if condition(x):
+            result.append(buffer)
+            buffer = []
+        else:
+            buffer.append(x)
+
+    if len(buffer):
+        result.append(buffer)
+
+    return result

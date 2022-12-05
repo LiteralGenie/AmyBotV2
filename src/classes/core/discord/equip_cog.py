@@ -1,9 +1,11 @@
+import re
 from dataclasses import dataclass
 from datetime import datetime
-import re
 from typing import Any, Callable, Optional
-from classes.core.discord.checks import app_check_perms, check_perms
 
+from classes.core import discord
+from classes.core.discord import types as types
+from classes.core.discord.checks import app_check_perms, check_perms
 from classes.core.discord.keywords import (
     BuyerKey,
     LinkKey,
@@ -14,16 +16,14 @@ from classes.core.discord.keywords import (
 )
 from classes.core.discord.table import Col, Table, clip
 from classes.core.server import types as Api
-from discord import Interaction, app_commands
-from discord.ext.commands import Context
-from discord.ext import commands
 from utils.discord import alias_by_prefix, extract_quoted, paginate
-from utils.http import fetch_page
+from utils.http import do_get
 from utils.misc import compose_1arg_fns
 from utils.parse import create_equip_link, int_to_price
-from classes.core.discord import types as types
 
-from classes.core import discord
+from discord import Interaction, app_commands
+from discord.ext import commands
+from discord.ext.commands import Context
 
 
 @dataclass
@@ -270,7 +270,7 @@ class EquipCog(commands.Cog):
                 if (v := params.get(k)) is not None:
                     ep %= {k: str(v).strip()}
 
-            resp = await fetch_page(ep, content_type="json")
+            resp = await do_get(ep, content_type="json")
             return resp
 
         def group_by_name(

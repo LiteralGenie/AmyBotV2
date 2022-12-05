@@ -1,6 +1,8 @@
-from operator import is_
+from datetime import datetime
+from decimal import Decimal
 import re
-from typing import Any
+from typing import Any, Generator
+from bs4 import NavigableString, Tag
 
 from yarl import URL
 
@@ -51,10 +53,10 @@ def int_to_price(
 
 def price_to_int(x: str) -> int:
     # Strip commas and spaces
-    text = str(x).replace(",", "").strip()
+    text = str(x).replace(",", "").strip().lower()
 
     # Check format (digits followed by optional suffix)
-    m = re.search(r"^\d+[mkc]?$", text)
+    m = re.search(r"^\d+.?\d*[mkc]?$", text)
     if m is None:
         raise Exception
 
@@ -69,16 +71,11 @@ def price_to_int(x: str) -> int:
         mult = 10**6
         text = text[:-1]
 
-    # Parse base
-    val = int(text)
-    if int(text) != float(text):
-        raise Exception
+    # Parse value
+    val = Decimal(text) * mult
+    assert val.as_integer_ratio()[1] == 1
 
-    # Apply mult
-    val = mult * val
-
-    # Return
-    return val
+    return int(val)
 
 
 def parse_equip_link(text: str) -> tuple[int, str, bool] | None:
@@ -106,3 +103,68 @@ def create_equip_link(eid: int, key: str, is_isekai=False) -> URL:
     url /= str(eid)
     url /= key
     return url
+
+
+def parse_post_date(text: str) -> float:
+    """Convert date-times found on forum to a utc timestamp
+
+    Formats supported:
+        Today, 07:44
+        Yesterday, 08:18
+        Sep 10 2020, 09:06
+    """
+
+    text = text.strip()
+
+    try:
+        MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]  # fmt: skip
+        months_patt = f"(?:{'|'.join(MONTHS)})"
+
+        very_old_patt = f"({months_patt})" + r" (\d{1,2}) (20\d{2}), (\d{2}):(\d{2})"
+        match = re.fullmatch(very_old_patt, text)
+        assert match is not None
+        vals = match.groups()
+        assert len(vals) == 5
+
+        [month, day, year, hour, minute] = vals
+        month = MONTHS.index(month) + 1
+
+        ts = datetime(int(year), month, int(day), int(hour), int(minute)).timestamp()
+        return ts
+    except AssertionError:
+        pass
+
+    try:
+        match = re.fullmatch(r"Yesterday, (\d{2}):(\d{2})", text)
+        assert match is not None
+
+        vals = match.groups()
+        assert len(vals) == 2
+
+        [hour, minute] = vals
+        today = datetime.now()
+        day = today.day - 1
+
+        ts = datetime(today.year, today.month, day, int(hour), int(minute)).timestamp()
+        return ts
+    except AssertionError:
+        pass
+
+    try:
+        match = re.fullmatch(r"Yesterday, (\d{2}):(\d{2})", text)
+        assert match is not None
+
+        vals = match.groups()
+        assert len(vals) == 2
+
+        [hour, minute] = vals
+        today = datetime.now()
+
+        ts = datetime(
+            today.year, today.month, today.day, int(hour), int(minute)
+        ).timestamp()
+        return ts
+    except AssertionError:
+        pass
+
+    raise Exception(f"Invalid date: {text}")

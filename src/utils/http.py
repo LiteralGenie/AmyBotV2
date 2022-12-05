@@ -7,10 +7,10 @@ from yarl import URL
 from config import logger
 
 
-async def fetch_page(
+async def do_get(
     url: str | URL,
     session: ClientSession | None = None,
-    content_type: Literal["soup", "text", "json"] = "soup",
+    content_type: Literal["html", "text", "json"] = "html",
 ) -> Any:
     """Perform a GET
 
@@ -23,26 +23,58 @@ async def fetch_page(
         Exception:
         ValueError:
     """
-    session = session or create_session()
+    session_ = session or create_session()
 
-    async with session:
-        logger.info(f"Fetching {url}")
-        resp = await session.get(url)
-        if resp.status != 200:
-            raise Exception(resp.status)
+    logger.info(f"GET {url}")
+    resp = await session_.get(url)
+    if resp.status != 200:
+        raise Exception(resp.status)
 
-        match content_type:
-            case "soup":
-                result = await resp.text(encoding="utf-8")
-                result = BeautifulSoup(result, "html.parser")
-            case "text":
-                result = await resp.text(encoding="utf-8")
-            case "json":
-                result = await resp.json(encoding="utf-8")
-            case default:
-                raise Exception(content_type)
+    match content_type:
+        case "html":
+            result = await resp.text(encoding="utf-8")
+            result = BeautifulSoup(result, "lxml")
+        case "text":
+            result = await resp.text(encoding="utf-8")
+        case "json":
+            result = await resp.json(encoding="utf-8")
+        case default:
+            raise Exception(content_type)
 
-        return result
+    if session is None:
+        await session_.close()
+
+    return result
+
+
+async def do_post(
+    url: URL,
+    data: Any = None,
+    session: ClientSession | None = None,
+    content_type: Literal["html", "text", "json"] = "html",
+) -> Any:
+    session_ = session or create_session()
+
+    logger.info(f"POST {url}")
+    resp = await session_.post(url, data=data)
+    if resp.status != 200:
+        raise Exception(resp.status)
+
+    match content_type:
+        case "html":
+            result = await resp.text(encoding="utf-8")
+            result = BeautifulSoup(result, "lxml")
+        case "text":
+            result = await resp.text(encoding="utf-8")
+        case "json":
+            result = await resp.json(encoding="utf-8")
+        case default:
+            raise Exception(content_type)
+
+    if session is None:
+        await session_.close()
+
+    return result
 
 
 def create_session():

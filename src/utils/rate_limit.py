@@ -1,6 +1,3 @@
-import asyncio
-
-
 CALL_LOG = dict()
 
 

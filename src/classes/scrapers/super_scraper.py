@@ -7,15 +7,17 @@ from datetime import datetime
 import bs4
 from bs4 import BeautifulSoup, Tag
 from classes.db import DB
-from config import paths
-from config import logger
+from config import logger, paths
+from utils.http import do_get
 from utils.json_cache import JsonCache
 from utils.parse import parse_equip_link, price_to_int
 from utils.rate_limit import rate_limit
-from utils.http import fetch_page
 from yarl import URL
 
+logger = logger.bind(tags=["super"])
+
 _limit = rate_limit(calls=1, period=5, scope="super")
+do_get = _limit(do_get)
 
 
 @dataclass
@@ -32,7 +34,7 @@ class SuperScraper:
     html_cache: dict = HTML_CACHE_FILE.load()  # type: ignore
 
     @classmethod
-    async def fetch_updates(cls):
+    async def update(cls) -> None:
         async def main():
             """Fetch auctions that haven't been parsed yet"""
             with DB:
@@ -47,9 +49,9 @@ class SuperScraper:
 
             for r in rows:
                 if r["is_complete"] is None:
-                    await cls.fetch_auction(r["id"], allow_cached=True)
+                    await cls.scan_auction(r["id"], allow_cached=True)
                 elif r["is_complete"] == 0:
-                    await cls.fetch_auction(r["id"], allow_cached=False)
+                    await cls.scan_auction(r["id"], allow_cached=False)
                 elif r["is_complete"] == 1:
                     # Retry auctions with fails
                     with DB:
@@ -63,7 +65,7 @@ class SuperScraper:
 
                         if len(fails) > 0:
                             purge_auction(r["id"], equips=True, mats=True, fails=True)
-                            await cls.fetch_auction(r["id"], allow_cached=True)
+                            await cls.scan_auction(r["id"], allow_cached=True)
 
         def purge_auction(
             id: str, listing=False, equips=False, mats=False, fails=False
@@ -72,14 +74,13 @@ class SuperScraper:
             with DB:
                 if fails: DB.execute("DELETE FROM super_fails WHERE id_auction = ?",(id,),)
                 if equips: DB.execute("DELETE FROM super_equips WHERE id_auction = ?",(id,),)
-                if mats: DB.execute("DELETE FROM super_items WHERE id_auction = ?",(id,),)
-                if listing: DB.execute("DELETE FROM super_auctions WHERE id_auction = ?",(id,),)
+                if mats: DB.execute("DELETE FROM super_mats WHERE id_auction = ?",(id,),)
+                if listing: DB.execute("DELETE FROM super_auctions WHERE id = ?",(id,),)
             # fmt: on
 
         return await main()
 
     @classmethod
-    @_limit
     async def refresh_list(cls) -> list[dict]:
         """Fetch list of Super's auctions and update DB
 
@@ -88,9 +89,9 @@ class SuperScraper:
         """
 
         async def main():
-            page: str = await fetch_page(cls.HOME_URL, content_type="text")
+            page: str = await do_get(cls.HOME_URL, content_type="text")
             # from test.stubs.super import homepage; page = homepage  # fmt: skip
-            soup = BeautifulSoup(page, "html.parser")
+            soup = BeautifulSoup(page, "lxml")
 
             row_els = soup.select("tbody > tr")
             row_data: list[dict] = []
@@ -131,7 +132,7 @@ class SuperScraper:
         return await main()
 
     @classmethod
-    async def fetch_auction(cls, auction_id: str, allow_cached=True) -> list[dict]:
+    async def scan_auction(cls, auction_id: str, allow_cached=True) -> None:
         """Fetch itemlist for auction
 
         Args:
@@ -221,24 +222,14 @@ class SuperScraper:
                         (is_complete, auction_id),
                     )
 
-            return item_data
-
         async def fetch(id: str, allow_cached=False) -> BeautifulSoup:
             path = f"itemlist{id}"
 
             if not allow_cached or path not in cls.html_cache:
-                # Fetch but rate-limited
-                @_limit
-                async def _fetch() -> BeautifulSoup:
-                    html: str = await fetch_page(
-                        cls.HOME_URL / path, content_type="text"
-                    )
-                    page = BeautifulSoup(html, "html.parser")
-                    cls.html_cache[path] = html
-                    cls.HTML_CACHE_FILE.dump(cls.html_cache)
-                    return page
-
-                page = await _fetch()
+                # Fetch auction page
+                html: str = await do_get(cls.HOME_URL / path, content_type="text")
+                cls.html_cache[path] = html
+                cls.HTML_CACHE_FILE.dump(cls.html_cache)
 
                 # Update db
                 with DB:
@@ -249,9 +240,9 @@ class SuperScraper:
                         """,
                         (time.time(),),
                     )
-            else:
-                page = BeautifulSoup(cls.html_cache[path], "html.parser")
 
+            html = cls.html_cache[path]
+            page = BeautifulSoup(html, "lxml")
             return page
 
         def parse_quirky_row(auction_id: str, cells: list[_Cell]) -> dict | None:
@@ -279,8 +270,8 @@ class SuperScraper:
             else:
                 return parse_equip_row(cells)
 
-        def parse_mat_row(rowEls: list[_Cell]) -> dict:
-            [codeCell, nameCell, _, currentBidCell, nextBidCell, sellerCell] = rowEls
+        def parse_mat_row(row_els: list[_Cell]) -> dict:
+            [codeCell, nameCell, _, currentBidCell, nextBidCell, sellerCell] = row_els
 
             id = codeCell.text
             seller = sellerCell.text
@@ -401,5 +392,5 @@ if __name__ == "__main__":
     import asyncio
     async def main():
         await SuperScraper.refresh_list()
-        await SuperScraper.fetch_updates()
+        await SuperScraper.update()
     asyncio.run(main())

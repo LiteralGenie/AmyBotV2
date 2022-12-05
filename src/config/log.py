@@ -28,6 +28,18 @@ def init_logger():
             level="DEBUG",
         )
 
+        logger.add(
+            paths.LOG_DIR / "super.log",
+            filter=lambda record: "super" in record["extra"].get("tags", []),
+            level="TRACE",
+        )
+
+        logger.add(
+            paths.LOG_DIR / "kedama.log",
+            filter=lambda record: "kedama" in record["extra"].get("tags", []),
+            level="DEBUG",
+        )
+
     def default_filter(record: "loguru.Record") -> bool:
         tags: list = record["extra"].get("tags", [])
         return "default" in tags or len(tags) == 0

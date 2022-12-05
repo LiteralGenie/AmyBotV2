@@ -8,3 +8,5 @@ lxml
 tomlkit
 uvicorn
 yarl
+
+pytest
