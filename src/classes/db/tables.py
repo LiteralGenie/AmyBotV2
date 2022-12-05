@@ -169,3 +169,33 @@ def create_tables():
             ) STRICT;
             """
         )
+
+    # Discord
+    with DB:
+        DB.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discord_watch_more (
+                id              INTEGER,
+
+                channel         INTEGER      NOT NULL,
+                user            INTEGER     NOT NULL,
+                pages           TEXT        NOT NULL,
+                last_visible    INTEGER     NOT NULL,
+
+                PRIMARY KEY (id)
+            ) STRICT;
+            """
+        )
+
+        DB.execute(
+            """
+            CREATE TABLE IF NOT EXISTS discord_watch_change (
+                id              INTEGER,
+
+                channel         INTEGER      NOT NULL,
+                user            INTEGER     NOT NULL,
+
+                PRIMARY KEY (id)
+            ) STRICT;
+            """
+        )

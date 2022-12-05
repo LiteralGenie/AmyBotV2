@@ -1,18 +1,19 @@
 import traceback
 
-from utils.discord import paginate
+from classes.core.discord.disk_watchers import FileWatcher
 from classes.core.discord.equip_cog import EquipCog
 from classes.core.discord.meta_cog import MetaCog
 from classes.core.discord.services.permissions_service import PermissionsService
-from classes.core.discord.watchers import FileWatcher
+from classes.core.discord.watcher_cog import WatcherCog
 from config import logger, paths
 from tomlkit.toml_document import TOMLDocument
+from utils.discord import paginate
 from utils.misc import dump_toml, load_toml
 from yarl import URL
 
 import discord
 from discord.ext import commands
-from discord.ext.commands import CheckFailure
+from discord.ext.commands import CheckFailure, Context
 
 logger = logger.bind(tags=["discord_bot"])
 
@@ -21,7 +22,9 @@ class AmyBot(commands.Bot):
     secrets: TOMLDocument = None  # type: ignore
     config: TOMLDocument = None  # type: ignore
     api_url: URL
-    permsService: PermissionsService
+
+    perms_service: PermissionsService
+    watcher_cog: WatcherCog = None  # type: ignore
 
     def run(self):
         secrets = load_toml(paths.SECRETS_FILE)
@@ -34,11 +37,13 @@ class AmyBot(commands.Bot):
         super().__init__("fake_prefix", *args, intents=intents, **kwargs)
 
     async def on_ready(self):
-        self.permsService = PermissionsService()
+        self.perms_service = PermissionsService()
 
         self.init_secrets()
         self.init_config()
 
+        self.watcher_cog = WatcherCog(self)
+        await self.add_cog(self.watcher_cog)
         await self.add_cog(EquipCog(self))
         await self.add_cog(MetaCog(self))  # should be last cog added
 
@@ -131,7 +136,10 @@ class AmyBot(commands.Bot):
 
     async def on_command_error(self, ctx, error_) -> None:
         if isinstance(error_, CheckFailure):
-            pass
+            return
+        elif isinstance(error_, commands.CommandNotFound):
+            logger.debug(f"Command not found {error_}")
+            return
 
         # Get real stack trace
         if isinstance(error_, commands.CommandInvokeError):
@@ -160,8 +168,10 @@ bot = AmyBot()
 
 
 @bot.before_invoke
-async def log(ctx):
-    logger.info(f"Invoking [{ctx.command}] on [{ctx.message.content}]")
+async def log(ctx: Context):
+    logger.info(
+        f"Invoking [{ctx.command}] on [{ctx.message.content}] by [{ctx.author.id}] in channel [{ctx.channel.id}] in guild [{ctx.guild.id if ctx.guild else None}]"
+    )
 
 
 if __name__ == "__main__":

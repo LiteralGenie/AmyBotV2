@@ -1,7 +1,7 @@
 import copy
 from pathlib import Path
 from typing import Optional, TypedDict
-from classes.core.discord.watchers import DirectoryWatcher
+from classes.core.discord.disk_watchers import DirectoryWatcher
 
 from config import logger, paths
 from tomlkit.toml_document import TOMLDocument

@@ -1,14 +1,18 @@
-from functools import partial
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import Any, Callable, Literal, Optional
-
-from yarl import URL
+from unicodedata import name
 
 from classes.core import discord
 from classes.core.discord import types as types
 from classes.core.discord.checks import app_check_perms, check_perms
+from classes.core.discord.discord_watchers import (
+    DeleteWatcher,
+    EditWatcher,
+    MoreWatcher,
+)
 from classes.core.discord.keywords import (
     BuyerKey,
     LinkKey,
@@ -23,6 +27,7 @@ from utils.discord import alias_by_prefix, extract_quoted, paginate
 from utils.http import do_get
 from utils.misc import compose_1arg_fns
 from utils.parse import create_equip_link, int_to_price
+from yarl import URL
 
 from discord import Interaction, app_commands
 from discord.ext import commands
@@ -48,7 +53,7 @@ class EquipCog(commands.Cog):
     async def app_equip(
         self,
         itn: Interaction,
-        equip_name: str,
+        equip_name: Optional[str],
         year: Optional[int],
         show_link: Optional[bool],
         show_thread: Optional[bool],
@@ -109,10 +114,36 @@ class EquipCog(commands.Cog):
     @commands.check(check_perms("equip"))
     async def text_equip(self, ctx: Context, *, msg: str):
         async def main():
+            # Get response
             params, opts = parse(msg)
+            pages = await self._equip(params, opts)
 
-            for pg in await self._equip(params, opts):
-                await ctx.send(pg)
+            if ctx.guild:
+                [pages_send, pages_save] = [pages[:4], pages[4:]]
+            else:
+                [pages_send, pages_save] = [pages, []]
+
+            # Send some of the response
+            responses = []
+            for pg in pages_send:
+                resp = await ctx.send(pg)
+                responses.append(resp.id)
+
+            # Save the rest for later
+            if pages_save:
+                await ctx.send(
+                    f"{len(pages_save)} pages omitted. Use !more to see the rest."
+                )
+                self.bot.watcher_cog.register(
+                    MoreWatcher(ctx.channel.id, self.bot, pages_save)
+                )
+
+            self.bot.watcher_cog.register(
+                DeleteWatcher(ctx.message.id, responses, ctx.channel.id, self.bot)
+            )
+            self.bot.watcher_cog.register(
+                EditWatcher(ctx.message.id, responses, ctx.channel.id, self.bot)
+            )
 
         def parse(
             text: str,
@@ -273,6 +304,7 @@ class EquipCog(commands.Cog):
                 sales_table = create_sales_table(items)
                 item_table = create_item_table(
                     items,
+                    show_name=True,
                     show_buyer=opts.show_buyer,
                     show_seller=opts.show_seller,
                 )
@@ -353,10 +385,17 @@ class EquipCog(commands.Cog):
 
         def create_item_table(
             items: list[types._Equip.CogEquip],
+            show_name=False,
             show_buyer=False,
             show_seller=True,
         ) -> Table:
             tbl = Table()
+
+            # Name col
+            if show_name:
+                names = [x["name"] for x in items]
+                name_col = Col(header="Item")
+                tbl.add_col(name_col, names)
 
             # Price col
             prices = items
