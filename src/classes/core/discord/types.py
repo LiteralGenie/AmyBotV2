@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Optional, TypedDict
 
 
@@ -8,12 +9,16 @@ class _Equip:
         min_price: int | None
         max_price: int | None
         seller: str | None
+        seller_partial: str | None
         buyer: str | None
+        buyer_partial: str | None
 
-    class FormatOptions(TypedDict, total=False):
-        show_link: bool
-        show_buyer: bool
-        show_seller: bool
+    @dataclass
+    class FormatOptions:
+        show_buyer: bool = False
+        show_seller: bool = False
+        show_equip_link: bool = False
+        show_thread_link: bool = False
 
     class CogAuction(TypedDict):
         time: float

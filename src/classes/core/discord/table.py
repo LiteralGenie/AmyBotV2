@@ -16,7 +16,8 @@ def clip(x: Any, max_width: int, tail: Optional[str] = None):
 
 @dataclass
 class Col:
-    title: str = ""
+    header: str = ""
+    trailer: str = ""
     padding_left: int = 1
     padding_right: int = 1
     align: Alignment = "left"
@@ -48,8 +49,9 @@ class Col:
 class Table:
     cells: list[list] = field(default_factory=list)
     cols: list[Col] = field(default_factory=list)
-    draw_outer_borders = False
-    draw_col_titles = True
+    draw_outer_borders: bool = False
+    draw_col_headers: bool = True
+    draw_col_trailers: bool = False
 
     col_div = "|"
     row_div = "-"
@@ -103,9 +105,11 @@ class Table:
             cb: Callable that accepts (row_text, row_type, row_index).
                 Where row_type is one of
                     BORDER_OUTER_TOP
-                    TITLE
+                    HEADER
                     BORDER_INNER
                     BODY
+                    TRAILER
+                    BORDER_INNER
                     BORDER_OUTER_BOTTOM
                 Useful for conditioanlly surrounding each row with something
 
@@ -118,8 +122,13 @@ class Table:
         content_widths = [self.get_col_width(idx) for idx in range(self.num_cols)]
 
         # Stringify cells
-        titles: list[str] = [
-            col.pad(col.title, content_widths[idx]) for idx, col in enumerate(self.cols)
+        headers: list[str] = [
+            col.pad(col.header, content_widths[idx])
+            for idx, col in enumerate(self.cols)
+        ]
+        trailers: list[str] = [
+            col.pad(col.trailer, content_widths[idx])
+            for idx, col in enumerate(self.cols)
         ]
         cell_texts: list[list[str]] = []
         for row in self.cells:
@@ -143,13 +152,13 @@ class Table:
             div = cb(div, "BORDER_OUTER_TOP", None)
             table_rows.append(div)
 
-        # Column titles
-        if self.draw_col_titles:
-            title_row = self.col_div.join(titles)
+        # Column headers
+        if self.draw_col_headers:
+            header_row = self.col_div.join(headers)
             if self.draw_outer_borders:
-                title_row = self.col_div + title_row + self.col_div
-            title_row = cb(title_row, "TITLE", None)
-            table_rows.append(title_row)
+                header_row = self.col_div + header_row + self.col_div
+            header_row = cb(header_row, "HEADER", None)
+            table_rows.append(header_row)
 
             div = ""
             for w, col in zip(content_widths, self.cols):
@@ -169,6 +178,25 @@ class Table:
                 text = self.col_div + text + self.col_div
             text = cb(text, "BODY", idx)
             table_rows.append(text)
+
+        # Column trailers
+        if self.draw_col_trailers:
+            div = ""
+            for w, col in zip(content_widths, self.cols):
+                div += self.row_div * (w + col.padding_left + col.padding_right)
+                div += itx_in
+            if self.draw_outer_borders:
+                div = itx_out + div[:-1] + itx_out
+            else:
+                div = div[:-1]
+            div = cb(div, "BORDER_INNER_BOTTOM", None)
+            table_rows.append(div)
+
+            trailer_row = self.col_div.join(trailers)
+            if self.draw_outer_borders:
+                trailer_row = self.col_div + trailer_row + self.col_div
+            trailer_row = cb(trailer_row, "TRAILER", None)
+            table_rows.append(trailer_row)
 
         # Outer border, bottom
         if self.draw_outer_borders:
@@ -192,7 +220,7 @@ class Table:
     def get_col_width(self, idx: int) -> int:
         """Column width excluding padding (ie length of longest string in column)"""
 
-        title = self.cols[idx].title if self.cols else ""
+        title = self.cols[idx].header if self.cols else ""
         cells = [self.cols[idx].stringify(cell) for cell in self.get_col(idx)]
         lengths = [len(title)] + [len(c) for c in cells]
         result = max(lengths)
@@ -212,7 +240,9 @@ class Table:
     @property
     def total_height(self) -> int:
         height = len(self.cells)
-        if self.draw_col_titles:
+        if self.draw_col_headers:
+            height += 2
+        if self.draw_col_trailers:
             height += 2
         if self.draw_outer_borders:
             height += 2

@@ -1,7 +1,10 @@
+from functools import partial
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
+
+from yarl import URL
 
 from classes.core import discord
 from classes.core.discord import types as types
@@ -12,6 +15,7 @@ from classes.core.discord.keywords import (
     MaxPriceKey,
     MinPriceKey,
     SellerKey,
+    ThreadKey,
     YearKey,
 )
 from classes.core.discord.table import Col, Table, clip
@@ -34,6 +38,7 @@ class EquipCog(commands.Cog):
         equip_name='Equip name (eg "leg oak heimd")',
         year="Ignore old auctions (eg 22)",
         show_link="Show equip link",
+        show_thread="Show auction link",
         min="Minimum price (eg 500k)",
         max="Maximum price (eg 1m)",
         seller="Username of seller",
@@ -46,6 +51,7 @@ class EquipCog(commands.Cog):
         equip_name: str,
         year: Optional[int],
         show_link: Optional[bool],
+        show_thread: Optional[bool],
         min: Optional[str],
         max: Optional[str],
         show_seller: Optional[bool],
@@ -68,11 +74,12 @@ class EquipCog(commands.Cog):
         params["buyer"] = buyer
 
         opts = types._Equip.FormatOptions()
-        opts["show_link"] = bool(show_link)
+        opts.show_equip_link = bool(show_link)
+        opts.show_thread_link = bool(show_thread)
         if show_seller or seller:
-            opts["show_seller"] = True
+            opts.show_seller = True
         if show_buyer or buyer:
-            opts["show_buyer"] = True
+            opts.show_buyer = True
 
         # for pg in await self._equip(params, opts):
         pages = await self._equip(params, opts)
@@ -121,6 +128,12 @@ class EquipCog(commands.Cog):
             ] = [
                 ("min_date", YearKey.prefix, YearKey.extract, YearKey.convert),
                 ("link", LinkKey.prefix, LinkKey.extract, lambda x: x is not None),
+                (
+                    "thread",
+                    ThreadKey.prefix,
+                    ThreadKey.extract,
+                    lambda x: x is not None,
+                ),
                 (
                     "min_price",
                     MinPriceKey.prefix,
@@ -188,13 +201,16 @@ class EquipCog(commands.Cog):
             opts = types._Equip.FormatOptions()
 
             if params.get("link"):
-                opts["show_link"] = True
+                opts.show_equip_link = True
                 del params["link"]
+            if params.get("thread"):
+                opts.show_thread_link = True
+                del params["thread"]
             if params.get("seller") is True:
-                opts["show_seller"] = True
+                opts.show_seller = True
                 del params["seller"]
             if params.get("buyer") is True:
-                opts["show_buyer"] = True
+                opts.show_buyer = True
                 del params["buyer"]
 
             # Return
@@ -206,93 +222,126 @@ class EquipCog(commands.Cog):
         self, params: types._Equip.FetchParams, opts: types._Equip.FormatOptions
     ) -> list[str]:
         async def main():
-            # Fetch
-            items = sorted(
-                await fetch(params), key=lambda d: d["price"] or 0, reverse=True
-            )
-            groups = group_by_name(items)
-            tables = {
-                name: create_table(
-                    lst,
-                    show_buyer=opts.get("show_buyer", False),
-                    show_seller=opts.get("show_seller", False),
-                )
-                for name, lst in groups.items()
-            }
+            # Fetch data
+            warning_params = None
+            params_ = params.copy()
+            items = await _fetch_equips(self.bot.api_url, params_)
 
-            # Create printout
+            # If no results, allow partial seller
+            if len(items) == 0 and params.get("seller"):
+                params_["seller_partial"] = params.get("seller")
+                del params_["seller"]
+                items = await _fetch_equips(self.bot.api_url, params_)
+                warning_params = f'Hint: Try using quotes if you are looking for a name containing a space (eg `seller"amy bot"`)'
+
+            # If no results, allow partial buyer
+            if len(items) == 0 and params.get("buyer"):
+                params_["buyer_partial"] = params.get("buyer")
+                del params_["buyer"]
+                items = await _fetch_equips(self.bot.api_url, params_)
+                warning_params = f'Hint: Try using quotes if you are looking for a name containing a space (eg `buyer"amy bot"`)'
+
+            # Still no results, return error
+            if len(items) == 0:
+                msg = "No equips found.\n```yaml\nSearch parameters:"
+                for k, v in params.items():
+                    msg += f"\n    {k}: {v}"
+                msg += "```"
+
+                if warning_params:
+                    msg += "\n" + warning_params
+
+                pages = paginate(msg)
+                return pages
+
+            # If all items are from single buyer or seller, show table of user stats and table of items
+            # Else show table each for each item name
             msg = ""
-            if opts.get("show_link"):
+            sellers = list(set(x["seller"] for x in items))
+            buyers = list(set(x["buyer"] for x in items))
+            if (
+                len(sellers) == 1
+                and None not in sellers
+                or len(buyers) == 1
+                and None not in buyers
+            ):
+                user = sellers[0] if len(sellers) == 1 else buyers[0]
 
-                def fmt_row(row_text: str, row_type: str, idx: int | None):
-                    if row_type == "BODY":
-                        item = items[idx]  # type: ignore
-                        url = create_equip_link(
-                            item["eid"], item["key"], item["is_isekai"]
-                        )
-                        result = f"`{row_text} | `{url}"
-                    else:
-                        result = f"`{row_text} | `"
-                    return result
+                items = sorted(
+                    items, key=lambda it: it["auction"]["time"], reverse=True
+                )
+                sales_table = create_sales_table(items)
+                item_table = create_item_table(
+                    items,
+                    show_buyer=opts.show_buyer,
+                    show_seller=opts.show_seller,
+                )
 
-                table_texts = {
-                    name: tbl.print(cb=fmt_row) for name, tbl in tables.items()
-                }
-                pieces = [f"**{name}**\n{text}" for name, text in table_texts.items()]
-                msg = "\n\n".join(pieces)
+                if opts.show_equip_link or opts.show_thread_link:
+                    link_type = "equip" if opts.show_equip_link else "thread"
+                    sales_table_text = sales_table.print()
+                    item_table_text = item_table.print(
+                        cb=partial(append_link, items=items, type=link_type)
+                    )
+
+                    msg = (
+                        "```py"
+                        + f"\n@ {user}"
+                        + f"\n\n{sales_table_text}"
+                        + "```"
+                        + f"\n{item_table_text}"
+                    )
+                else:
+                    sales_table_text = sales_table.print()
+                    item_table_text = item_table.print()
+
+                    msg = (
+                        "```py"
+                        + f"\n@ {user}"
+                        + f"\n\n{sales_table_text}"
+                        + f"\n\n{item_table_text}"
+                        + "```"
+                    )
             else:
-                pieces = [f"@ {name}\n{tbl.print()}" for name, tbl in tables.items()]
-                msg = "\n\n".join(pieces)
-                msg = f"```py\n{msg}```"
+                items = sorted(items, key=lambda it: it["price"] or 0, reverse=True)
+                groups = group_by_name(items)
+                tables = {
+                    name: create_item_table(
+                        lst,
+                        show_buyer=opts.show_buyer,
+                        show_seller=opts.show_seller,
+                    )
+                    for name, lst in groups.items()
+                }
+
+                if opts.show_equip_link or opts.show_thread_link:
+                    link_type = "equip" if opts.show_equip_link else "thread"
+                    table_texts = {
+                        name: tbl.print(
+                            cb=partial(append_link, items=grp, type=link_type)
+                        )
+                        for grp, (name, tbl) in zip(groups.values(), tables.items())
+                    }
+                    pieces = [
+                        f"**{name}**\n{text}" for name, text in table_texts.items()
+                    ]
+                    msg = "\n\n".join(pieces)
+
+                    if warning_params:
+                        msg += "\n\n" + warning_params
+                else:
+                    pieces = [
+                        f"@ {name}\n{tbl.print()}" for name, tbl in tables.items()
+                    ]
+                    msg = "\n\n".join(pieces)
+                    msg = f"```py\n{msg}```"
+
+                    if warning_params:
+                        msg += warning_params
 
             # Paginate
             pages = paginate(msg)
             return pages
-
-        async def fetch(
-            params: types._Equip.FetchParams,
-        ) -> list[types._Equip.CogEquip]:
-            ep_super = self.bot.api_url / "super" / "search_equips"
-            ep_kedama = self.bot.api_url / "kedama" / "search_equips"
-
-            # Search for equip that contains all words
-            # so order doesn't matter and partial words are okay
-            # eg "lege oak heimd" should match "Legendary Oak Staff of Heimdall"
-            name_fragments = re.sub(r"\s", ",", params.get("name", "").strip())
-            ep_super %= dict(name=name_fragments)
-            ep_kedama %= dict(name=name_fragments)
-
-            keys: list[str] = [
-                "min_date",
-                "min_price",
-                "max_price",
-                "seller",
-                "buyer",
-            ]
-            for k in keys:
-                if (v := params.get(k)) is not None:
-                    ep_super %= {k: str(v).strip()}
-                    ep_kedama %= {k: str(v).strip()}
-
-            super_data = await do_get(ep_super, content_type="json")
-            kedama_data = await do_get(ep_kedama, content_type="json")
-
-            # Normalize
-            for x in super_data:
-                x["auction"]["title_short"] = "S" + x["auction"]["title"].zfill(3)
-                x["auction"]["time"] = x["auction"]["end_time"]
-                del x["auction"]["end_time"]
-                x["min_bid"] = x["next_bid"]
-                del x["next_bid"]
-            for x in kedama_data:
-                x["auction"]["title_short"] = "K" + x["auction"]["title_short"].zfill(3)
-                x["auction"]["time"] = x["auction"]["start_time"]
-                del x["auction"]["start_time"]
-                x["min_bid"] = x["start_bid"]
-                del x["start_bid"]
-
-            resp = super_data + kedama_data
-            return resp
 
         def group_by_name(
             items: list[types._Equip.CogEquip],
@@ -302,92 +351,222 @@ class EquipCog(commands.Cog):
                 map.setdefault(item["name"], []).append(item)
             return map
 
-        def create_table(
+        def create_item_table(
             items: list[types._Equip.CogEquip],
             show_buyer=False,
             show_seller=True,
         ) -> Table:
-            def main() -> Table:
-                tbl = Table()
+            tbl = Table()
 
-                # Price col
-                prices = items
-                price_col = Col(title="Price", stringify=fmt_price, align="right")
-                tbl.add_col(price_col, prices)
+            # Price col
+            prices = items
+            price_col = Col(header="Price", stringify=_fmt_price, align="right")
+            tbl.add_col(price_col, prices)
 
-                # User cols
-                if show_buyer:
-                    buyers = [d["buyer"] or "" for d in items]
-                    buyer_col = Col(title="Buyer")
-                    tbl.add_col(buyer_col, buyers)
-                if show_seller:
-                    sellers = [d["seller"] or "" for d in items]
-                    seller_col = Col(title="Seller")
-                    tbl.add_col(seller_col, sellers)
+            # User cols
+            if show_buyer:
+                buyers = [d["buyer"] or "" for d in items]
+                buyer_col = Col(header="Buyer")
+                tbl.add_col(buyer_col, buyers)
+            if show_seller:
+                sellers = [d["seller"] or "" for d in items]
+                seller_col = Col(header="Seller")
+                tbl.add_col(seller_col, sellers)
 
-                # Stats col
-                stats = [d["stats"] for d in items]
-                stat_col = Col(title="Stats", stringify=fmt_stats)
-                tbl.add_col(stat_col, stats)
+            # Stats col
+            stats = [d["stats"] for d in items]
+            stat_col = Col(header="Stats", stringify=_fmt_stats)
+            tbl.add_col(stat_col, stats)
 
-                # Level col
-                levels = [d["level"] or 0 for d in items]
-                level_col = Col(title="Level", align="right")
-                tbl.add_col(level_col, levels)
+            # Level col
+            levels = [d["level"] or 0 for d in items]
+            level_col = Col(header="Level", align="right")
+            tbl.add_col(level_col, levels)
 
-                # Date col
-                dates = [(d["auction"]["time"], d["auction"]["title_short"]) for d in items]  # type: ignore
-                date_col = Col(
-                    title="# Auction / Date", stringify=lambda x: fmt_date(*x)
-                )
-                tbl.add_col(date_col, dates)
+            # Date col
+            dates = [(d["auction"]["time"], d["auction"]["title_short"]) for d in items]  # type: ignore
+            date_col = Col(header="# Auction / Date", stringify=lambda x: _fmt_date(*x))
+            tbl.add_col(date_col, dates)
 
-                # Remove padding at edges
-                tbl.cols[0].padding_left = 0
-                tbl.cols[-1].padding_right = 0
+            # Remove padding at edges
+            tbl.cols[0].padding_left = 0
+            tbl.cols[-1].padding_right = 0
 
-                return tbl
+            return tbl
 
-            def fmt_price(item: types._Equip.CogEquip) -> str:
-                price = item["price"]
-                min_bid = item["min_bid"] or 0
+        def create_sales_table(items: list[types._Equip.CogEquip]):
+            """Tally earnings for each equip category (eg 1H, Staff, etc)"""
 
-                if price is None or price <= 0:
-                    min_bid_str = int_to_price(min_bid, precision=(0, 0, 1))
-                    min_bid_str = f"({min_bid_str})"
-                    return min_bid_str
-                elif price > 0:
-                    return int_to_price(price, precision=(0, 0, 1))
+            # Calculate total sales for each category
+            cats = {
+                "1H": ["axe", "club", "rapier", "shortsword", "wakizashi"],
+                "2H": ["estoc", "longsword", "mace", "katana"],
+                "Staff": ["oak", "redwood", "willow", "katalox"],
+                "Shield": ["buckler", "kite", "force"],
+                "Cloth": ["cotton", "phase"],
+                "Light": ["leather", "shade"],
+                "Heavy": ["plate", "power"],
+                "Other": [],
+            }
+            counts = {k: 0 for k in cats}
+            credits = {k: 0 for k in cats}
+
+            for it in items:
+                for cat, aliases in cats.items():
+                    if any(alias.lower() in it["name"].lower() for alias in aliases):
+                        counts[cat] += 1
+                        credits[cat] += it["price"] or 0
+                        break
                 else:
-                    raise Exception("Pylance please...")
+                    counts["Other"] += 1
+                    credits["Other"] += it["price"] or 0
 
-            def fmt_stats(stats: list[str]) -> str:
-                def value(stat) -> int:
-                    stat = stat.lower()
-                    if any(x in stat for x in ["forged"]):
-                        return 30
-                    elif any(x in stat for x in ["edb", "adb", "mdb"]):
-                        return 20
-                    elif any(x in stat for x in ["prof", "blk", "iw"]):
-                        return 10
-                    else:
-                        return 1
+            # Create table
+            tbl = Table(draw_col_trailers=True)
+            tbl.add_col(
+                col=Col(
+                    header="Category",
+                    trailer=">Total<",
+                ),
+                cells=list(cats.keys()),
+            )
+            tbl.add_col(
+                col=Col(
+                    header="Count",
+                    trailer=str(sum(counts.values())),
+                    align="right",
+                ),
+                cells=list(counts.values()),
+            )
+            tbl.add_col(
+                col=Col(
+                    header="Credits",
+                    trailer=int_to_price(sum(credits.values()), precision=(0, 0, 1)),
+                    align="right",
+                    stringify=partial(int_to_price, precision=(0, 0, 1)),
+                ),
+                cells=list(credits.values()),
+            )
+            tbl.cols[0].padding_left = 0
+            tbl.cols[-1].padding_right = 0
 
-                sorted_ = sorted(stats, key=lambda st: value(st), reverse=True)
+            return tbl
 
-                simplified = [
-                    re.sub(r".* ((?:EDB|Prof))", r"\1", st, flags=re.IGNORECASE)
-                    for st in sorted_
-                ]
-                text = ", ".join(simplified[:3])
-                clipped = clip(text, 15, "...")
-                return clipped
+        def append_link(
+            row_text: str,
+            row_type: str,
+            idx: int | None,
+            items: list[types._Equip.CogEquip],
+            type: Literal["equip", "thread"] = "equip",
+        ):
+            """Append link to table row"""
 
-            def fmt_date(ts, title):
-                title_str = "#" + title[:4]
-                ts_str = datetime.fromtimestamp(ts).strftime("%m-%Y")
-                return f"{title_str} / {ts_str}"
-
-            return main()
+            if row_type == "BODY":
+                item = items[idx]  # type: ignore
+                if type == "equip":
+                    url = create_equip_link(item["eid"], item["key"], item["is_isekai"])
+                else:
+                    url = f"https://forums.e-hentai.org/index.php?showtopic={item['auction']['id']}"
+                result = f"`{row_text} | `{url}"
+            else:
+                result = f"`{row_text} | `"
+            return result
 
         return await main()
+
+
+async def _fetch_equips(
+    api_url: URL,
+    params: types._Equip.FetchParams,
+) -> list[types._Equip.CogEquip]:
+    """Hit search endpoints for equip data
+
+    Rearranges keys in the response to satisfy CogEquip
+    (because the endpoints return slightly different dtos)
+    """
+
+    ep_super = api_url / "super" / "search_equips"
+    ep_kedama = api_url / "kedama" / "search_equips"
+
+    # Search for equip that contains all words
+    # so order doesn't matter and partial words are okay
+    # eg "lege oak heimd" should match "Legendary Oak Staff of Heimdall"
+    name_fragments = re.sub(r"\s", ",", params.get("name", "").strip())
+    ep_super %= dict(name=name_fragments)
+    ep_kedama %= dict(name=name_fragments)
+
+    keys: list[str] = [
+        "min_date",
+        "min_price",
+        "max_price",
+        "seller",
+        "seller_partial",
+        "buyer",
+        "buyer_partial",
+    ]
+    for k in keys:
+        if (v := params.get(k)) is not None:
+            ep_super %= {k: str(v).strip()}
+            ep_kedama %= {k: str(v).strip()}
+
+    super_data = await do_get(ep_super, content_type="json")
+    kedama_data = await do_get(ep_kedama, content_type="json")
+
+    # Normalize
+    for x in super_data:
+        x["auction"]["title_short"] = "S" + x["auction"]["title"].zfill(3)
+        x["auction"]["time"] = x["auction"]["end_time"]
+        del x["auction"]["end_time"]
+        x["min_bid"] = x["next_bid"]
+        del x["next_bid"]
+    for x in kedama_data:
+        x["auction"]["title_short"] = "K" + x["auction"]["title_short"].zfill(3)
+        x["auction"]["time"] = x["auction"]["start_time"]
+        del x["auction"]["start_time"]
+        x["min_bid"] = x["start_bid"]
+        del x["start_bid"]
+
+    resp = super_data + kedama_data
+    return resp
+
+
+def _fmt_price(item: types._Equip.CogEquip) -> str:
+    price = item["price"]
+    min_bid = item["min_bid"] or 0
+
+    if price is None or price <= 0:
+        min_bid_str = int_to_price(min_bid, precision=(0, 0, 1))
+        min_bid_str = f"({min_bid_str})"
+        return min_bid_str
+    elif price > 0:
+        return int_to_price(price, precision=(0, 0, 1))
+    else:
+        raise Exception("Pylance please...")
+
+
+def _fmt_stats(stats: list[str]) -> str:
+    def value(stat) -> int:
+        stat = stat.lower()
+        if any(x in stat for x in ["forged"]):
+            return 30
+        elif any(x in stat for x in ["edb", "adb", "mdb"]):
+            return 20
+        elif any(x in stat for x in ["prof", "blk", "iw"]):
+            return 10
+        else:
+            return 1
+
+    sorted_ = sorted(stats, key=lambda st: value(st), reverse=True)
+
+    simplified = [
+        re.sub(r".* ((?:EDB|Prof))", r"\1", st, flags=re.IGNORECASE) for st in sorted_
+    ]
+    text = ", ".join(simplified[:3])
+    clipped = clip(text, 15, "...")
+    return clipped
+
+
+def _fmt_date(ts, title):
+    title_str = "#" + title[:4]
+    ts_str = datetime.fromtimestamp(ts).strftime("%m-%Y")
+    return f"{title_str} / {ts_str}"

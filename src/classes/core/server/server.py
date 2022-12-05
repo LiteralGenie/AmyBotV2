@@ -18,7 +18,7 @@ server.add_middleware(RequestLog)
 
 
 @server.get("/super/search_equips")
-def get_search_equips(
+def get_super_equips(
     name: Optional[str] = None,
     min_date: Optional[float] = None,
     max_date: Optional[float] = None,
@@ -119,7 +119,7 @@ def get_search_equips(
 
 
 @server.get("/kedama/search_equips")
-def get_search_equips(
+def get_kedama_equips(
     name: Optional[str] = None,
     min_date: Optional[float] = None,
     max_date: Optional[float] = None,

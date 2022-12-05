@@ -103,6 +103,22 @@ class LinkKey(Keyword):
             return (text, None)
 
 
+class ThreadKey(Keyword):
+    prefix = "thread"
+
+    @classmethod
+    def extract(cls, text: str) -> tuple[str, str | None]:
+        """Check if "thread" is in text"""
+
+        PATT = re.compile(r"\b(thread)\b")
+        m = re.search(PATT, text)
+        if m:
+            rem = text[: m.start(1)] + text[m.end(1) :]
+            return (rem, "")
+        else:
+            return (text, None)
+
+
 class BuyerKey(Keyword):
     prefix = "buyer"
 
