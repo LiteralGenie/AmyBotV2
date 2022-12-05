@@ -1,3 +1,6 @@
+import traceback
+
+from utils.discord import paginate
 from classes.core.discord.equip_cog import EquipCog
 from classes.core.discord.meta_cog import MetaCog
 from classes.core.discord.services.permissions_service import PermissionsService
@@ -9,6 +12,7 @@ from yarl import URL
 
 import discord
 from discord.ext import commands
+from discord.ext.commands import CheckFailure
 
 logger = logger.bind(tags=["discord_bot"])
 
@@ -125,8 +129,39 @@ class AmyBot(commands.Bot):
 
     ###
 
+    async def on_command_error(self, ctx, error_) -> None:
+        if isinstance(error_, CheckFailure):
+            pass
+
+        # Get real stack trace
+        if isinstance(error_, commands.CommandInvokeError):
+            error = error_.original
+        else:
+            error = error_
+
+        # Format response
+        msg = (
+            "Unexpected error"
+            + "\n```py"
+            + "\n@ EXCEPTION:\n"
+            + "".join(traceback.format_tb(error.__traceback__))
+            + "------------\n"
+            + f"{error_}\n"
+            + "\n@ MESSAGE:"
+            + f"\n{ctx.message.content}"
+            + "```"
+        )
+        logger.exception(msg)
+        for pg in paginate(msg):
+            await ctx.send(pg)
+
 
 bot = AmyBot()
+
+
+@bot.before_invoke
+async def log(ctx):
+    logger.info(f"Invoking [{ctx.command}] on [{ctx.message.content}]")
 
 
 if __name__ == "__main__":
