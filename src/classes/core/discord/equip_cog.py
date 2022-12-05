@@ -15,7 +15,6 @@ from classes.core.discord.keywords import (
     YearKey,
 )
 from classes.core.discord.table import Col, Table, clip
-from classes.core.server import types as Api
 from utils.discord import alias_by_prefix, extract_quoted, paginate
 from utils.http import do_get
 from utils.misc import compose_1arg_fns
@@ -250,14 +249,18 @@ class EquipCog(commands.Cog):
             pages = paginate(msg)
             return pages
 
-        async def fetch(params: types._Equip.FetchParams) -> list[Api.SuperEquip]:
-            ep = self.bot.api_url / "super" / "search_equips"
+        async def fetch(
+            params: types._Equip.FetchParams,
+        ) -> list[types._Equip.CogEquip]:
+            ep_super = self.bot.api_url / "super" / "search_equips"
+            ep_kedama = self.bot.api_url / "kedama" / "search_equips"
 
             # Search for equip that contains all words
             # so order doesn't matter and partial words are okay
             # eg "lege oak heimd" should match "Legendary Oak Staff of Heimdall"
             name_fragments = re.sub(r"\s", ",", params.get("name", "").strip())
-            ep %= dict(name=name_fragments)
+            ep_super %= dict(name=name_fragments)
+            ep_kedama %= dict(name=name_fragments)
 
             keys: list[str] = [
                 "min_date",
@@ -268,21 +271,39 @@ class EquipCog(commands.Cog):
             ]
             for k in keys:
                 if (v := params.get(k)) is not None:
-                    ep %= {k: str(v).strip()}
+                    ep_super %= {k: str(v).strip()}
+                    ep_kedama %= {k: str(v).strip()}
 
-            resp = await do_get(ep, content_type="json")
+            super_data = await do_get(ep_super, content_type="json")
+            kedama_data = await do_get(ep_kedama, content_type="json")
+
+            # Normalize
+            for x in super_data:
+                x["auction"]["title_short"] = "S" + x["auction"]["title"].zfill(3)
+                x["auction"]["time"] = x["auction"]["end_time"]
+                del x["auction"]["end_time"]
+                x["min_bid"] = x["next_bid"]
+                del x["next_bid"]
+            for x in kedama_data:
+                x["auction"]["title_short"] = "K" + x["auction"]["title_short"].zfill(3)
+                x["auction"]["time"] = x["auction"]["start_time"]
+                del x["auction"]["start_time"]
+                x["min_bid"] = x["start_bid"]
+                del x["start_bid"]
+
+            resp = super_data + kedama_data
             return resp
 
         def group_by_name(
-            items: list[Api.SuperEquip],
-        ) -> dict[str, list[Api.SuperEquip]]:
+            items: list[types._Equip.CogEquip],
+        ) -> dict[str, list[types._Equip.CogEquip]]:
             map = {}
             for item in items:
                 map.setdefault(item["name"], []).append(item)
             return map
 
         def create_table(
-            items: list[Api.SuperEquip],
+            items: list[types._Equip.CogEquip],
             show_buyer=False,
             show_seller=True,
         ) -> Table:
@@ -315,9 +336,7 @@ class EquipCog(commands.Cog):
                 tbl.add_col(level_col, levels)
 
                 # Date col
-                dates = [
-                    (d["auction"]["end_time"], d["auction"]["title"]) for d in items
-                ]
+                dates = [(d["auction"]["time"], d["auction"]["title_short"]) for d in items]  # type: ignore
                 date_col = Col(
                     title="# Auction / Date", stringify=lambda x: fmt_date(*x)
                 )
@@ -329,14 +348,14 @@ class EquipCog(commands.Cog):
 
                 return tbl
 
-            def fmt_price(item: Api.SuperEquip) -> str:
+            def fmt_price(item: types._Equip.CogEquip) -> str:
                 price = item["price"]
-                next_bid = item["next_bid"]
+                min_bid = item["min_bid"] or 0
 
                 if price is None or price <= 0:
-                    next_bid_str = int_to_price(next_bid, precision=(0, 0, 1))
-                    next_bid_str = f"({next_bid_str})"
-                    return next_bid_str
+                    min_bid_str = int_to_price(min_bid, precision=(0, 0, 1))
+                    min_bid_str = f"({min_bid_str})"
+                    return min_bid_str
                 elif price > 0:
                     return int_to_price(price, precision=(0, 0, 1))
                 else:
@@ -365,7 +384,7 @@ class EquipCog(commands.Cog):
                 return clipped
 
             def fmt_date(ts, title):
-                title_str = "#S" + title[:3].zfill(3)
+                title_str = "#" + title[:4]
                 ts_str = datetime.fromtimestamp(ts).strftime("%m-%Y")
                 return f"{title_str} / {ts_str}"
 

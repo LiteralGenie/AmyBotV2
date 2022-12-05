@@ -16,7 +16,6 @@ from utils.parse import parse_equip_link, parse_post_date, price_to_int
 from utils.rate_limit import rate_limit
 from yarl import URL
 
-
 logger = logger.bind(tags=["kedama"])
 
 _limit = rate_limit(calls=1, period=5, scope="forums")
@@ -67,9 +66,9 @@ class KedamaScraper:
             auction_id = url.query["showtopic"]
             title = page.select_one(".maintitle td").text.strip()  # type: ignore
             if m := re.search(r"(\d+\.?\d*)", title):
-                title_short = "K" + m.group(1)
+                title_short = m.group(1)
             else:
-                title_short = "K??"
+                title_short = "???"
             listing = dict(
                 id=auction_id,
                 title=title,

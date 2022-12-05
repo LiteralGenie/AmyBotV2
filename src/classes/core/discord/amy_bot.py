@@ -1,15 +1,14 @@
-import discord
-from tomlkit.toml_document import TOMLDocument
-from yarl import URL
 from classes.core.discord.equip_cog import EquipCog
 from classes.core.discord.meta_cog import MetaCog
 from classes.core.discord.services.permissions_service import PermissionsService
-from classes.core.discord.watchers import DirectoryWatcher, FileWatcher
-from config import paths
-from discord.ext import commands
-
-from config import logger
+from classes.core.discord.watchers import FileWatcher
+from config import logger, paths
+from tomlkit.toml_document import TOMLDocument
 from utils.misc import dump_toml, load_toml
+from yarl import URL
+
+import discord
+from discord.ext import commands
 
 logger = logger.bind(tags=["discord_bot"])
 
