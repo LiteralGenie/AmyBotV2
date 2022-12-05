@@ -60,7 +60,7 @@ class SuperScraper:
                             SELECT * FROM super_fails
                             WHERE id_auction = ?
                             """,
-                            (r["id"]),
+                            (r["id"],),
                         ).fetchall()
 
                         if len(fails) > 0:
