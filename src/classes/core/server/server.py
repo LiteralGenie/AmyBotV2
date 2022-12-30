@@ -28,6 +28,7 @@ def get_super_equips(
     seller_partial: Optional[str] = None,
     buyer: Optional[str] = None,
     buyer_partial: Optional[str] = None,
+    complete: Optional[bool] = None,
     DB: Connection = Depends(get_db),
 ):
     where_builder = WhereBuilder("AND")
@@ -83,6 +84,10 @@ def get_super_equips(
         fragments = [x.strip() for x in seller_partial.split(",")]
         for fragment in fragments:
             where_builder.add("seller LIKE ?", f"%{fragment}%")
+
+    # Create completion filter
+    if complete is not None:
+        where_builder.add("sa_is_complete = ?", int(complete))
 
     # Query DB
     with DB:

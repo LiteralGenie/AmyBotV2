@@ -568,6 +568,9 @@ async def _fetch_equips(
             ep_super %= {k: str(v).strip()}
             ep_kedama %= {k: str(v).strip()}
 
+    # Ignore on-going auctions
+    ep_super %= dict(complete='true')
+
     super_data = await do_get(ep_super, content_type="json")
     kedama_data = await do_get(ep_kedama, content_type="json")
 
@@ -621,7 +624,7 @@ def _fmt_stats(stats: list[str]) -> str:
         re.sub(r".* ((?:EDB|Prof))", r"\1", st, flags=re.IGNORECASE) for st in sorted_
     ]
     text = ", ".join(simplified[:3])
-    clipped = clip(text, 17, "..")
+    clipped = clip(text, 18, "..")
     return clipped
 
 
