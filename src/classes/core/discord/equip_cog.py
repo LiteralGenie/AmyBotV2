@@ -444,7 +444,7 @@ class EquipCog(commands.Cog):
 
             # Date col
             dates = [(d["auction"]["time"], d["auction"]["title_short"]) for d in items]  # type: ignore
-            date_col = Col(header="# Auction / Date", stringify=lambda x: _fmt_date(*x))
+            date_col = Col(header="#Auction / Date", stringify=lambda x: _fmt_date(*x))
             tbl.add_col(date_col, dates)
 
             # Remove padding at edges
@@ -621,7 +621,7 @@ def _fmt_stats(stats: list[str]) -> str:
         re.sub(r".* ((?:EDB|Prof))", r"\1", st, flags=re.IGNORECASE) for st in sorted_
     ]
     text = ", ".join(simplified[:3])
-    clipped = clip(text, 15, "...")
+    clipped = clip(text, 17, "..")
     return clipped
 
 
