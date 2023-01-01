@@ -80,10 +80,10 @@ class DWatcher:
     ) -> bool:
         return all(
             [
-                self.message == message,
-                self.user == user,
-                self.channel == channel,
-                self.guild == guild,
+                self.message == message or self.message is None,
+                self.user == user or self.user is None,
+                self.channel == channel or self.channel is None,
+                self.guild == guild or self.guild is None,
             ]
         )
 
