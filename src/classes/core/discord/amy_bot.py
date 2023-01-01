@@ -2,6 +2,7 @@ import traceback
 
 from classes.core.discord.disk_watchers import FileWatcher
 from classes.core.discord.equip_cog import EquipCog
+from classes.core.discord.lottery_cog import LotteryCog
 from classes.core.discord.meta_cog import MetaCog
 from classes.core.discord.services.permissions_service import PermissionsService
 from classes.core.discord.watcher_cog import WatcherCog
@@ -45,6 +46,7 @@ class AmyBot(commands.Bot):
         self.watcher_cog = WatcherCog(self)
         await self.add_cog(self.watcher_cog)
         await self.add_cog(EquipCog(self))
+        await self.add_cog(LotteryCog(self))
         await self.add_cog(MetaCog(self))  # should be last cog added
 
         logger.info(f"Logged in as {bot.user}")

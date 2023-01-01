@@ -26,7 +26,7 @@ from utils.misc import load_toml
 
 logger = logger.bind(tags=["lottery"])
 
-_limit = rate_limit(calls=1, period=5, scope="hv")
+_limit = rate_limit(calls=1, period=1, scope="hv")
 do_get = _limit(do_get)
 
 
@@ -89,6 +89,8 @@ class LotteryScraper:
                             data,
                         )
 
+            await session.close()
+
         def calculate_missing(type: LotteryType):
             # Get index of last completed
             now = datetime.now(timezone.utc)
@@ -111,7 +113,7 @@ class LotteryScraper:
         async def fetch_page(
             id: int, type: LotteryType, session: ClientSession, allow_cached=True
         ):
-            cache_id = f"{id}_type"
+            cache_id = f"{id}_{type}"
 
             if not allow_cached or cache_id not in cls.html_cache:
                 # Fetch lottery page

@@ -5,7 +5,7 @@ from typing import Any, Literal
 @dataclass
 class WhereBuilder:
     mode: Literal["OR", "AND"] = "AND"
-    ignore_case = True
+    ignore_case: bool = True
     fragments: list["Condition | WhereBuilder"] = field(default_factory=list)
 
     def add(self, expr: str, data: Any = None):
@@ -23,7 +23,11 @@ class WhereBuilder:
 
             for frag in self.fragments:
                 if isinstance(frag, Condition):
-                    exprs.append(frag.expr)
+                    ex = frag.expr
+                    if self.ignore_case:
+                        ex += " COLLATE NOCASE"
+                    exprs.append(ex)
+
                     if frag.data is not None:
                         data.append(str(frag.data))
                 elif isinstance(frag, WhereBuilder):
@@ -35,8 +39,6 @@ class WhereBuilder:
 
             clause = "WHERE " if root else ""
             clause += f" {self.mode} ".join(exprs)
-            if self.ignore_case:
-                clause += " COLLATE NOCASE"
             if not root:
                 clause = f"({clause})"
 

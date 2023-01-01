@@ -127,7 +127,7 @@ class EquipCog(commands.Cog):
             if ctx.guild:
                 [pages_send, pages_save] = [pages[:3], pages[3:]]
             else:
-                [pages_send, pages_save] = [pages[:15], [pages[15:]]]
+                [pages_send, pages_save] = [pages[:15], pages[15:]]
 
             # Send some of the response
             responses = []

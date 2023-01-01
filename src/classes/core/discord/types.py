@@ -37,3 +37,9 @@ class _Equip:
         buyer: str | None
         seller: str
         auction: "_Equip.CogAuction"
+
+
+class _Lottery:
+    class FetchParams(TypedDict, total=False):
+        name: str
+        min_date: float | None

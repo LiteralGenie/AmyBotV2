@@ -284,6 +284,8 @@ def get_lottery(
                 rows.append(data)
 
     # Recombine columns into list of (item, winner)
+    parse = json.loads
+
     result = []
     for r in rows:
         result.append(
@@ -294,10 +296,10 @@ def get_lottery(
                 prizes=[
                     [r["1_prize"], r["1_user"]],
                     [r["1b_prize"], r["1b_user"]],
-                    [r["2_prize"], r["2_user"]],
-                    [r["3_prize"], r["3_user"]],
-                    [r["4_prize"], r["4_user"]],
-                    [r["5_prize"], r["5_user"]],
+                    [parse(r["2_prize"]), r["2_user"]],
+                    [parse(r["3_prize"]), r["3_user"]],
+                    [parse(r["4_prize"]), r["4_user"]],
+                    [parse(r["5_prize"]), r["5_user"]],
                 ],
             ),
         )
