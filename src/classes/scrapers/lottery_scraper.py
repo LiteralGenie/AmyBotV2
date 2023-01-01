@@ -1,13 +1,3 @@
-"""
-Calculate latest lotto
-Check for db entry
-    yes -> quit
-Fetch
-    cache
-Parse
-Add to db
-"""
-
 from datetime import datetime, timezone, timedelta
 import json
 import re
