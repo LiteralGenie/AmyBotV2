@@ -199,3 +199,67 @@ def create_tables():
             ) STRICT;
             """
         )
+
+    # Lottery
+    with DB:
+        DB.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lottery_weapon (
+                id          INTEGER,
+
+                date        REAL        NOT NULL,
+                tickets     INTEGER     NOT NULL,
+                
+                -- Grand prize (equip)
+                "1_prize"     TEXT,
+                "1_user"      TEXT        NOT NULL,
+
+                -- Core prize (prize column isn't important)
+                "1b_prize"    TEXT        NOT NULL,
+                "1b_user"     TEXT,
+
+                -- Prize column contains json: '[quantity, "item_name"]'
+                "2_prize"     TEXT        NOT NULL,
+                "2_user"      TEXT        NOT NULL,
+                "3_prize"     TEXT        NOT NULL,
+                "3_user"      TEXT        NOT NULL,
+                "4_prize"     TEXT        NOT NULL,
+                "4_user"      TEXT        NOT NULL,
+                "5_prize"     TEXT        NOT NULL,
+                "5_user"      TEXT        NOT NULL,
+
+                PRIMARY KEY (id)
+            ) STRICT;
+            """
+        )
+
+        DB.execute(
+            """
+                CREATE TABLE IF NOT EXISTS lottery_armor (
+                    id          INTEGER,
+
+                    date        REAL        NOT NULL,   --start time
+                    tickets     INTEGER     NOT NULL,
+                    
+                    -- Grand prize (equip)
+                    "1_prize"     TEXT,
+                    "1_user"      TEXT        NOT NULL,
+
+                    -- Core prize (prize column isn't important)
+                    "1b_prize"    TEXT        NOT NULL,
+                    "1b_user"     TEXT,
+
+                    -- Prize column contains json: '[quantity, "item_name"]'
+                    "2_prize"     TEXT        NOT NULL,
+                    "2_user"      TEXT        NOT NULL,
+                    "3_prize"     TEXT        NOT NULL,
+                    "3_user"      TEXT        NOT NULL,
+                    "4_prize"     TEXT        NOT NULL,
+                    "4_user"      TEXT        NOT NULL,
+                    "5_prize"     TEXT        NOT NULL,
+                    "5_user"      TEXT        NOT NULL,
+
+                    PRIMARY KEY (id)
+                ) STRICT;
+                """
+        )
