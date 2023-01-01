@@ -5,6 +5,7 @@ from typing import Any, Literal
 @dataclass
 class WhereBuilder:
     mode: Literal["OR", "AND"] = "AND"
+    ignore_case = True
     fragments: list["Condition | WhereBuilder"] = field(default_factory=list)
 
     def add(self, expr: str, data: Any = None):
@@ -34,6 +35,8 @@ class WhereBuilder:
 
             clause = "WHERE " if root else ""
             clause += f" {self.mode} ".join(exprs)
+            if self.ignore_case:
+                clause += " COLLATE NOCASE"
             if not root:
                 clause = f"({clause})"
 

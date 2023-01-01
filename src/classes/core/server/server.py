@@ -97,7 +97,6 @@ def get_super_equips(
             FROM super_equips as se INNER JOIN super_auctions as sa
             ON sa.id = se.id_auction
             {where}
-            COLLATE NOCASE
             """
         logger.trace(f"Search super equips {query} {data}")
         rows = DB.execute(query, data).fetchall()
@@ -203,7 +202,6 @@ def get_kedama_equips(
             FROM kedama_equips as equip INNER JOIN kedama_auctions as list
             ON list.id = equip.id_auction
             {where}
-            COLLATE NOCASE
             """
         logger.trace(f"Search kedama equips {query} {data}")
         rows = DB.execute(query, data).fetchall()
@@ -222,6 +220,88 @@ def get_kedama_equips(
         r["stats"] = json.loads(r["stats"])
 
     # Return
+    return result
+
+
+@server.get("/lottery/search")
+def get_lottery(
+    equip: Optional[str] = None,
+    user: Optional[str] = None,
+    user_partial: Optional[str] = None,
+    min_date: Optional[float] = None,
+    max_date: Optional[float] = None,
+    DB: Connection = Depends(get_db),
+):
+    where_builder = WhereBuilder("AND")
+
+    # Filter by item name
+    if equip is not None:
+        fragments = [x.strip() for x in equip.split(",")]
+        for fragment in fragments:
+            where_builder.add('"1_prize" LIKE ?', f"%{fragment}%")
+
+    # Create date filters (utc)
+    if min_date is not None and max_date is not None and max_date < min_date:
+        raise HTTPException(
+            400, detail=f"min_date > max_date ({min_date} > {max_date})"
+        )
+    if min_date is not None:
+        where_builder.add("date >= ?", min_date)
+    if max_date is not None:
+        where_builder.add("date <= ?", max_date)
+
+    # Filter by winner name
+    user_cols = ["1_user", "1b_user", "2_user", "3_user", "4_user", "5_user"]
+    if user is not None:
+        wb = WhereBuilder("OR")
+        for col in user_cols:
+            wb.add(f'"{col}" = ?', user)
+        where_builder.add_builder(wb)
+    elif user_partial is not None:
+        wb = WhereBuilder("OR")
+        for col in user_cols:
+            wb2 = WhereBuilder("AND")
+            fragments = [x.strip() for x in user_partial.split(",")]
+            for fragment in fragments:
+                wb2.add(f'"{col}" LIKE ?', f"%{fragment}%")
+            wb.add_builder(wb2)
+        where_builder.add_builder(wb)
+
+    # Run query
+    rows = []
+    with DB:
+        for type in ["weapon", "armor"]:
+            where, query_data = where_builder.print()
+            query = f"""
+                SELECT * FROM lottery_{type}
+                {where}
+                """
+            logger.trace(f"Search lottery {query} {query_data}")
+            rs = DB.execute(query, query_data).fetchall()
+            for r in rs:
+                data = dict(r)
+                data["type"] = type
+                rows.append(data)
+
+    # Recombine columns into list of (item, winner)
+    result = []
+    for r in rows:
+        result.append(
+            dict(
+                date=r["date"],
+                tickets=r["tickets"],
+                lottery=dict(id=r["id"], type=r["type"]),
+                prizes=[
+                    [r["1_prize"], r["1_user"]],
+                    [r["1b_prize"], r["1b_user"]],
+                    [r["2_prize"], r["2_user"]],
+                    [r["3_prize"], r["3_user"]],
+                    [r["4_prize"], r["4_user"]],
+                    [r["5_prize"], r["5_user"]],
+                ],
+            ),
+        )
+
     return result
 
 
