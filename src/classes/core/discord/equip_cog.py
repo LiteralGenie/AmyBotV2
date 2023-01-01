@@ -127,7 +127,7 @@ class EquipCog(commands.Cog):
             if ctx.guild:
                 [pages_send, pages_save] = [pages[:3], pages[3:]]
             else:
-                [pages_send, pages_save] = [pages, []]
+                [pages_send, pages_save] = [pages[:15], [pages[15:]]]
 
             # Send some of the response
             responses = []
@@ -569,7 +569,7 @@ async def _fetch_equips(
             ep_kedama %= {k: str(v).strip()}
 
     # Ignore on-going auctions
-    ep_super %= dict(complete='true')
+    ep_super %= dict(complete="true")
 
     super_data = await do_get(ep_super, content_type="json")
     kedama_data = await do_get(ep_kedama, content_type="json")
