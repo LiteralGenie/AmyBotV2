@@ -16,7 +16,7 @@ from utils.misc import load_toml
 
 logger = logger.bind(tags=["lottery"])
 
-_limit = rate_limit(calls=1, period=1, scope="hv")
+_limit = rate_limit(calls=1, period=5, scope="hv")
 do_get = _limit(do_get)
 
 
@@ -50,36 +50,45 @@ class LotteryScraper:
         async def main():
             session = await cls._create_session()
 
-            types: list[LotteryType] = ["weapon", "armor"]
-            for type in types:
-                lotto_start = cls.START_WEAPON if type == "weapon" else cls.START_ARMOR
-                table_name = "lottery_weapon" if type == "weapon" else "lottery_armor"
+            try:
+                types: list[LotteryType] = ["weapon", "armor"]
+                for type in types:
+                    lotto_start = (
+                        cls.START_WEAPON if type == "weapon" else cls.START_ARMOR
+                    )
+                    table_name = (
+                        "lottery_weapon" if type == "weapon" else "lottery_armor"
+                    )
 
-                missing = calculate_missing(type)
-                for index in missing:
-                    page = await fetch_page(index, type, session)
+                    missing = calculate_missing(type)
+                    for index in missing:
+                        try:
+                            page = await fetch_page(index, type, session)
+                        except ValueError:
+                            logger.info(f"Unable to fetch lottery {type} {index}")
+                            return
 
-                    data = parse_page(page)
-                    data["id"] = index
+                        data = parse_page(page)
+                        data["id"] = index
 
-                    # Calculate timestamp
-                    start_date = lotto_start + timedelta(days=index - 1)
-                    assert start_date.month == data["month"]
-                    assert start_date.day == data["day"]
-                    data["date"] = start_date.timestamp()
+                        # Calculate timestamp
+                        start_date = lotto_start + timedelta(days=index - 1)
+                        assert start_date.month == data["month"]
+                        assert start_date.day == data["day"]
+                        data["date"] = start_date.timestamp()
 
-                    # Insert into DB
-                    with DB:
-                        DB.execute(
-                            f"""
-                            INSERT INTO {table_name}
-                            (id, date, tickets, "1_prize", "1_user", "1b_prize", "1b_user", "2_prize", "2_user", "3_prize", "3_user", "4_prize", "4_user", "5_prize", "5_user")
-                            VALUES (:id, :date, :tickets, :1_prize, :1_user, :1b_prize, :1b_user, :2_prize, :2_user, :3_prize, :3_user, :4_prize, :4_user, :5_prize, :5_user)
-                            """,
-                            data,
-                        )
-
-            await session.close()
+                        # Insert into DB
+                        with DB:
+                            DB.execute(
+                                f"""
+                                INSERT INTO {table_name}
+                                (id, date, tickets, "1_prize", "1_user", "1b_prize", "1b_user", "2_prize", "2_user", "3_prize", "3_user", "4_prize", "4_user", "5_prize", "5_user")
+                                VALUES (:id, :date, :tickets, :1_prize, :1_user, :1b_prize, :1b_user, :2_prize, :2_user, :3_prize, :3_user, :4_prize, :4_user, :5_prize, :5_user)
+                                """,
+                                data,
+                            )
+            finally:
+                await session.close()
 
         def calculate_missing(type: LotteryType):
             # Get index of last completed
@@ -112,6 +121,10 @@ class LotteryScraper:
                     s="Bazaar", ss=ss, lottery=id
                 )
                 html: str = await do_get(url, session=session, content_type="text")
+
+                # If fetch not successful, we're probably in-battle
+                if 'id="lotteryform"' not in html:
+                    raise ValueError
 
                 cls.html_cache[cache_id] = html
                 cls.HTML_CACHE_FILE.dump(cls.html_cache)
