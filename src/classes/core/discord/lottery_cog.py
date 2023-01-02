@@ -39,7 +39,7 @@ class LotteryCog(commands.Cog):
             params["min_date"] = YearKey.convert(raw)
 
         # Generate table
-        params["name"] = rem
+        params["name"] = rem.strip()
         pages = await self._lottery_item(params)
 
         if ctx.guild:
@@ -86,6 +86,18 @@ class LotteryCog(commands.Cog):
             ep %= dict(min_date=str(params.get("min_date")))
 
         data = await do_get(ep, content_type="json")
+        if len(data) == 0:
+            msg = "No data found.\n```yaml\nSearch parameters:"
+            debug = params.copy()
+            debug["equip_name"] = params["name"]  # type: ignore
+            del debug["name"]
+
+            for k, v in debug.items():
+                msg += f"\n    {k}: {v}"
+            msg += "```"
+
+            pages = paginate(msg)
+            return pages
         data.sort(key=lambda x: x["date"], reverse=True)
 
         # Create table
@@ -132,7 +144,7 @@ class LotteryCog(commands.Cog):
             params["min_date"] = YearKey.convert(raw)
 
         # Generate table
-        params["name"] = rem
+        params["name"] = rem.strip()
         pages = await self._lottery_win(params)
 
         if ctx.guild:
@@ -173,12 +185,14 @@ class LotteryCog(commands.Cog):
             # Fetch data
             ep = self.bot.api_url / "lottery" / "search"
             ep %= dict(user=params["name"])  # type: ignore
+            if params.get("min_date"):
+                ep %= dict(min_date=str(params.get("min_date")))
             data = await do_get(ep, content_type="json")
 
             if len(data) == 0:
                 msg = "No data found.\n```yaml\nSearch parameters:"
                 debug = params.copy()
-                debug["equip_name"] = params["name"]  # type: ignore
+                debug["user"] = params["name"]  # type: ignore
                 del debug["name"]
 
                 for k, v in debug.items():
