@@ -39,8 +39,8 @@ MONTHS = [
 
 
 class LotteryScraper:
-    START_WEAPON = datetime(2013, 9, 14, 0, tzinfo=timezone.utc)  # 1379116800
-    START_ARMOR = datetime(2014, 3, 30, 11, tzinfo=timezone.utc)  # 1396180800
+    START_WEAPON = datetime(2013, 9, 13, 0, tzinfo=timezone.utc)  # 1379116800
+    START_ARMOR = datetime(2014, 3, 29, 11, tzinfo=timezone.utc)  # 1396180800
 
     HTML_CACHE_FILE = JsonCache(paths.CACHE_DIR / "lottery_html.json", default=dict)
     html_cache: dict = HTML_CACHE_FILE.load()  # type: ignore
@@ -73,8 +73,9 @@ class LotteryScraper:
 
                         # Calculate timestamp
                         start_date = lotto_start + timedelta(days=index - 1)
-                        assert start_date.month == data["month"]
-                        assert start_date.day == data["day"]
+                        end_date = start_date + timedelta(days=1)
+                        assert end_date.month == data["month"]
+                        assert end_date.day == data["day"]
                         data["date"] = start_date.timestamp()
 
                         # Insert into DB
