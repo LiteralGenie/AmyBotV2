@@ -39,8 +39,8 @@ MONTHS = [
 
 
 class LotteryScraper:
-    START_WEAPON = datetime(2013, 9, 14, 0, tzinfo=timezone.utc)
-    START_ARMOR = datetime(2014, 3, 29, 12, tzinfo=timezone.utc)
+    START_WEAPON = datetime(2013, 9, 14, 0, 5, tzinfo=timezone.utc)
+    START_ARMOR = datetime(2014, 3, 29, 12, 5, tzinfo=timezone.utc)
 
     HTML_CACHE_FILE = JsonCache(paths.CACHE_DIR / "lottery_html.json", default=dict)
     html_cache: dict = HTML_CACHE_FILE.load()  # type: ignore
