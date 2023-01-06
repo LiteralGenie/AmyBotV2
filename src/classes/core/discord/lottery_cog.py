@@ -16,7 +16,7 @@ from classes.core.discord.discord_watchers import (
 )
 from classes.core.discord.keywords import YearKey
 from classes.core.discord.table import Col, Table
-from utils.discord import paginate
+from utils.discord import alias_by_prefix, paginate
 from utils.http import do_get
 
 
@@ -25,8 +25,9 @@ class LotteryCog(commands.Cog):
     bot: "discord.AmyBot"
 
     @commands.command(
-        name="lit",
-        extras=dict(id="lit"),
+        name="litem",
+        aliases=alias_by_prefix("litem", starting_at=3),
+        extras=dict(id="litem"),
     )
     @commands.check(check_perms("lit"))
     async def text_lottery_item(self, ctx: Context, *, msg: str):
@@ -130,8 +131,9 @@ class LotteryCog(commands.Cog):
         return pages
 
     @commands.command(
-        name="lwin",
-        extras=dict(id="lwin"),
+        name="lwinner",
+        aliases=alias_by_prefix("lwinner", starting_at=3),
+        extras=dict(id="lwinner"),
     )
     @commands.check(check_perms("lwin"))
     async def text_lottery_win(self, ctx: Context, *, msg: str):
