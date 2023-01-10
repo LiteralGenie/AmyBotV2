@@ -1,20 +1,33 @@
 import json
-from datetime import datetime, timezone
+import sqlite3
 from sqlite3 import Connection
 from typing import Optional
 
-from classes.core.server import logger
-from classes.core.server.middleware import ErrorLog, RequestLog, PerformanceLog
-from classes.db import get_db
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
+
+from classes.core.server import logger
+from classes.core.server.middleware import (
+    ErrorLog,
+    GZipWrapper,
+    PerformanceLog,
+    RequestLog,
+)
+from classes.db import get_db
 from utils.sql import WhereBuilder
 
 server = FastAPI()
 
+# Endpoints with a gzip'd response
+GZipWrapper.endpoints = ["/export/sqlite", "/export/json"]
+
 # Order matters, topmost are called first
 server.add_middleware(ErrorLog)
+server.add_middleware(GZipWrapper)
 server.add_middleware(PerformanceLog)
 server.add_middleware(RequestLog)
+
+EXPORTED_TABLES = ['super_auctions', 'super_equips', 'super_mats', 'super_fails', 'kedama_auctions' ,'kedama_equips', 'kedama_mats', 'kedama_fails_item', 'lottery_weapon', 'lottery_armor']  # fmt: skip
 
 
 @server.get("/super/search_equips")
@@ -305,6 +318,41 @@ def get_lottery(
         )
 
     return result
+
+
+@server.get("/export/sqlite", response_class=PlainTextResponse)
+def export_sqlite(DB: Connection = Depends(get_db)):
+    # """Equivalent to .dump in sqlite3"""
+
+    DB_COPY = sqlite3.connect(":memory:")
+    DB.backup(DB_COPY)
+
+    with DB_COPY:
+        # Delete unnecessary tables
+        tables = DB_COPY.execute(
+            'SELECT name FROM sqlite_master WHERE type = "table"'
+        ).fetchall()
+        tables = [x[0] for x in tables]
+
+        for tbl in tables:
+            if tbl not in EXPORTED_TABLES:
+                DB_COPY.execute(f"DROP TABLE {tbl}")
+
+    # Export
+    resp = "\n".join(DB_COPY.iterdump())
+    return resp
+
+
+@server.get("/export/json")
+def export_json(DB: Connection = Depends(get_db)):
+    # """Dump DB as JSON"""
+    resp = dict()
+
+    with DB:
+        for tbl in EXPORTED_TABLES:
+            resp[tbl] = [dict(x) for x in DB.execute(f"SELECT * FROM {tbl}").fetchall()]
+
+    return resp
 
 
 if __name__ == "__main__":
