@@ -44,6 +44,11 @@ def get_super_equips(
     complete: Optional[bool] = None,
     DB: Connection = Depends(get_db),
 ):
+    """Search for items sold at a Super auction
+
+    The equip name and user name can be a comma separated list (eg "peerl,oak,heimd" instead of "Peerless Oak Staff of Heimdall")
+    """
+
     where_builder = WhereBuilder("AND")
 
     # Create name filters
@@ -148,6 +153,11 @@ def get_kedama_equips(
     buyer_partial: Optional[str] = None,
     DB: Connection = Depends(get_db),
 ):
+    """Search for items sold at a Kedama auction
+
+    The equip name and user name can be a comma separated list (eg "peerl,oak,heimd" instead of "Peerless Oak Staff of Heimdall")
+    """
+
     where_builder = WhereBuilder("AND")
 
     # Create name filters
@@ -245,6 +255,10 @@ def get_lottery(
     max_date: Optional[float] = None,
     DB: Connection = Depends(get_db),
 ):
+    """Search lottery data
+
+    The equip name and user name can be a comma separated list (eg "peerl,oak,heimd" instead of "Peerless Oak Staff of Heimdall")
+    """
     where_builder = WhereBuilder("AND")
 
     # Filter by item name
@@ -322,7 +336,7 @@ def get_lottery(
 
 @server.get("/export/sqlite", response_class=PlainTextResponse)
 def export_sqlite(DB: Connection = Depends(get_db)):
-    # """Equivalent to .dump in sqlite3"""
+    """Equivalent to .dump in sqlite3"""
 
     DB_COPY = sqlite3.connect(":memory:")
     DB.backup(DB_COPY)
@@ -345,7 +359,7 @@ def export_sqlite(DB: Connection = Depends(get_db)):
 
 @server.get("/export/json")
 def export_json(DB: Connection = Depends(get_db)):
-    # """Dump DB as JSON"""
+    """Dump DB as JSON"""
     resp = dict()
 
     with DB:
