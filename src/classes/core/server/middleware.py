@@ -27,12 +27,14 @@ class RequestLog(BaseHTTPMiddleware):
 
         resp_body = [section async for section in resp.body_iterator]
         resp.body_iterator = iterate_in_threadpool(iter(resp_body))
-        try:
-            resp_data = resp_body[0].decode()  # type: ignore
-            logger.trace(resp_data)
-        except UnicodeDecodeError:
-            size = sum(len(x) for x in resp_body)
-            logger.trace(f"gzip'd response of size {size}")
+
+        if resp_body:
+            try:
+                resp_data = resp_body[0].decode()  # type: ignore
+                logger.trace(resp_data)
+            except UnicodeDecodeError:
+                size = sum(len(x) for x in resp_body)
+                logger.trace(f"gzip'd response of size {size}")
 
         return resp
 
