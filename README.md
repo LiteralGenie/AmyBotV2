@@ -31,3 +31,11 @@ But you can manually update it by running:
 This data is also available in JSON format:
 
 `curl https://hvdata.gisadan.dev/export/json | jq`
+
+### Samples
+
+<blockquote><details>
+<summary>Searching auction data</summary>
+<img src="https://user-images.githubusercontent.com/24236225/211687135-d9b826ac-ab16-4c70-87f7-d04117ae51f9.png">
+<img src="https://user-images.githubusercontent.com/24236225/211686727-276dae1b-f5f6-4afd-bbcc-78c8a9790a52.png">
+</details></blockquote>
